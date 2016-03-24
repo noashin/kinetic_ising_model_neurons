@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
+from scipy.special import expit
 import seaborn
 import multiprocessing as multiprocess
 import click
@@ -160,14 +161,24 @@ def do_multiprocess(function, function_args, num_processes):
               help='Number of time stamps. Length of recording')
 @click.option('--num_processes', type=click.INT,
               default=1,)
-def main(num_neurons, time_steps, num_processes):
+@click.option('--likelihood_function', type=click.STRING,
+              default='probit',
+              help='Should be either probit or logistic')
+def main(num_neurons, time_steps, num_processes, likelihood_function):
     # Get the spiking activity
     N = num_neurons
     ro = 0.3
     T = time_steps
     J = spike_and_slab(ro, N)
     S0 = -np.ones(N)
-    energy_function = stats.norm.cdf
+
+    if likelihood_function == 'probit':
+        energy_function = stats.norm.cdf
+    elif likelihood_function == 'logistic':
+        energy_function = expit
+    else:
+        raise ValueError('Unknown likelihood function')
+
     S = generate_spikes(N, T, S0, J, energy_function)
 
     # infere coupling from S
