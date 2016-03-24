@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from scipy import stats
 import seaborn
 import multiprocessing as multiprocess
+import click
 
 from spikes_activity_generator import generate_spikes, spike_and_slab
 import parameters_update_prior_terms as prior_update
@@ -150,12 +151,20 @@ def do_multiprocess(function, function_args, num_processes):
         results_list = [function(some_args) for some_args in function_args]
     return results_list
 
-
-def main():
+@click.command()
+@click.option('--num_neurons', type=click.INT,
+              default=10,
+              help='number of neurons in the network')
+@click.option('--time_steps', type=click.INT,
+              default=100,
+              help='Number of time stamps. Length of recording')
+@click.option('--num_processes', type=click.INT,
+              default=1,)
+def main(num_neurons, time_steps, num_processes):
     # Get the spiking activity
-    N = 50
+    N = num_neurons
     ro = 0.3
-    T = 10000
+    T = time_steps
     J = spike_and_slab(ro, N)
     S0 = -np.ones(N)
     energy_function = stats.norm.cdf
@@ -163,10 +172,6 @@ def main():
 
     # infere coupling from S
     J_est_1 = np.empty(J.shape)
-    J_est_2 = np.empty(J.shape)
-    J_est_3 = np.empty(J.shape)
-    J_est_4 = np.empty(J.shape)
-    num_processes = 10
     args_multi = []
     indices = range(N)
     inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
