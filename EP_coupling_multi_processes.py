@@ -11,7 +11,7 @@ import parameters_update_prior_terms as prior_update
 import parameters_update_likelihood_terms as likelihood_update
 
 
-def update_likelihood_terms(mu, nu, v, m, s, activity, n):
+def update_likelihood_terms(mu, nu, v, m, s, activity, n, cdf_factor):
     '''
 
     :param mu:
@@ -34,7 +34,7 @@ def update_likelihood_terms(mu, nu, v, m, s, activity, n):
         #x_i = activity[i]
         mu_old = likelihood_update.calc_mu_old(mu, nu_old, v[i, :], m[i, :])
         z = likelihood_update.calc_z(x_i, mu_old, nu_old)
-        alpha_i = likelihood_update.calc_alpha_i(x_i, nu_old, z)
+        alpha_i = likelihood_update.calc_alpha_i(x_i, nu_old, z, cdf_factor)
 
         mu = likelihood_update.update_mu(mu_old, alpha_i, nu_old, x_i)
         nu = likelihood_update.update_nu(nu_old, alpha_i, x_i, mu)
@@ -42,12 +42,12 @@ def update_likelihood_terms(mu, nu, v, m, s, activity, n):
 
         m[i, :] = likelihood_update.update_m_i(mu_old, alpha_i, v[i, :], x_i, nu_old)
         m[i, :] = [0 if not np.isfinite(v[i, j]) else m[i, j] for j in range(N)]
-        s[i] = likelihood_update.update_s_i(z, v[i, :], nu_old, m[i, :], mu_old)
+        s[i] = likelihood_update.update_s_i(z, v[i, :], nu_old, m[i, :], mu_old, cdf_factor)
 
     return mu, nu, v, m, s
 
 
-def EP(activity, ro, n, pprior):
+def EP(activity, ro, n, pprior, cdf_factor):
     '''
 
     :param S: Activity matrix [T, N]
@@ -83,7 +83,7 @@ def EP(activity, ro, n, pprior):
     convergence = False
 
     while not convergence and itr < max_itr:
-        mu, nu, v, m, s = update_likelihood_terms(mu, nu, v, m, s, activity, n)
+        mu, nu, v, m, s = update_likelihood_terms(mu, nu, v, m, s, activity, n, cdf_factor)
 
         nu_old = prior_update.calc_nu_old(nu, v[T, :])
 
@@ -129,8 +129,8 @@ def EP(activity, ro, n, pprior):
     return mu
 
 
-def EP_single_neuron(activity, ro, ns, pprior):
-    mus = [EP(activity, ro, n, pprior) for n in ns]
+def EP_single_neuron(activity, ro, ns, pprior, cdf_factor):
+    mus = [EP(activity, ro, n, pprior, cdf_factor) for n in ns]
     return mus
 
 
@@ -180,8 +180,10 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
 
     if likelihood_function == 'probit':
         energy_function = stats.norm.cdf
+        cdf_factor = 1.0
     elif likelihood_function == 'logistic':
         energy_function = expit
+        cdf_factor = 1.6
     else:
         raise ValueError('Unknown likelihood function')
 
@@ -193,7 +195,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
     indices = range(N)
     inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
     for input_indices in inputs:
-        args_multi.append((S, sparsity, input_indices, pprior))
+        args_multi.append((S, sparsity, input_indices, pprior, cdf_factor))
 
     mus = do_multiprocess(multi_process_EP, args_multi, num_processes)
 
@@ -201,7 +203,8 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
         J_est_1[indices, :] = mus[i]
     import ipdb; ipdb.set_trace()
     # plot and compare J and J_est
-    title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") + "_pprior_" + str(pprior)
+    title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
+            + "_pprior_" + str(pprior) + likelihood_function
     fig = plt.figure()
     plt.plot([J.min(), J.max()], [J.min(), J.max()], 'k')
     plt.plot(J.flatten(), J_est_1.flatten(), 'o')

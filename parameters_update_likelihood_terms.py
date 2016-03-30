@@ -29,8 +29,8 @@ def update_m_i(mu_old, alpha_i, v_i_new, x_i, nu_old):
     return mu_old + alpha_i * v_i_new_x_i + alpha_i * v_old_x_i
 
 
-def update_s_i(z, v_i_new, v_old, m_i_new, mu_old):
-    phi_z = stats.norm.cdf(z)
+def update_s_i(z, v_i_new, v_old, m_i_new, mu_old, cdf_factor):
+    phi_z = stats.norm.cdf(z / cdf_factor)
 
     first_term = np.prod(np.sqrt((v_i_new + v_old) / v_i_new))
     second_term = np.exp(np.sum(np.power(m_i_new - mu_old, 2) / (2*(v_old + v_i_new))))
@@ -42,10 +42,10 @@ def calc_mu_old(mu, nu_old, v_i, m_i):
     return mu + np.array(nu_old) * (1.0 / np.array(v_i)) * np.array(mu - m_i)
 
 
-def calc_alpha_i(x_i, nu_old, z):
+def calc_alpha_i(x_i, nu_old, z, cdf_factor):
     first_term = 1.0 / np.sqrt(np.dot(x_i.transpose(), np.array(nu_old) * np.array(x_i)) + 1)
 
-    return first_term * stats.norm.pdf(z) / stats.norm.cdf(z)
+    return first_term * stats.norm.pdf(z) / stats.norm.cdf(z / cdf_factor)
 
 
 def calc_z(x_i, mu_old, nu_old):
