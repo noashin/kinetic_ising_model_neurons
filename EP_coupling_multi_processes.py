@@ -47,7 +47,7 @@ def update_likelihood_terms(mu, nu, v, m, s, activity, n):
     return mu, nu, v, m, s
 
 
-def EP(activity, ro, n):
+def EP(activity, ro, n, pprior):
     '''
 
     :param S: Activity matrix [T, N]
@@ -57,8 +57,6 @@ def EP(activity, ro, n):
     N = activity.shape[1]
 
     # Initivalization
-    #pprior = ro
-    pprior = 0.5
     sigma0 = 0.0
     sigma1 = 1.0
 
@@ -99,15 +97,17 @@ def EP(activity, ro, n):
 
         G0 = prior_update.calc_G(mu_old, nu_old, sigma0)
         G1 = prior_update.calc_G(mu_old, nu_old, sigma1)
-        p_old = prior_update.calc_p_old(p_, a, b)
-        #p_old = pprior
+        #p_old = prior_update.calc_p_old(p_, a, b)
+        p_old = pprior
         z = prior_update.calc_Z(p_old, G1, G0)
         c1 = prior_update.calc_c1(z, p_old, G1, mu_old, nu_old, sigma1, G0, sigma0)
         c2 = prior_update.calc_c2(z, p_old, G1, mu_old, nu_old, sigma1, G0, sigma0)
         c3 = prior_update.calc_c3(c1, c2)
 
         nu[nu_old_pos_positions] = prior_update.update_nu(nu_old, c3)[nu_old_pos_positions]
-        mu[nu_old_pos_positions] = prior_update.update_mu(mu_old, c1, nu_old)
+        mu[nu_old_pos_positions] = prior_update.update_mu(mu_old, c1, nu_old)[nu_old_pos_positions]
+
+        p_[nu_old_pos_positions] = prior_update.update_p_i(p_old, G1, G0)[nu_old_pos_positions]
 
         v[T, nu_old_pos_positions] = prior_update.update_v_i(c3, nu_old)[nu_old_pos_positions]
         m[T, nu_old_pos_positions] = prior_update.update_m_i(mu_old, c1, v[T, :], nu_old)[nu_old_pos_positions]
@@ -129,9 +129,8 @@ def EP(activity, ro, n):
     return mu
 
 
-def EP_single_neuron(activity, ro, ns):
-    mus = [EP(activity, ro, n) for n in ns]
-
+def EP_single_neuron(activity, ro, ns, pprior):
+    mus = [EP(activity, ro, n, pprior) for n in ns]
     return mus
 
 
@@ -160,16 +159,23 @@ def do_multiprocess(function, function_args, num_processes):
               default=100,
               help='Number of time stamps. Length of recording')
 @click.option('--num_processes', type=click.INT,
-              default=1,)
+              default=1)
 @click.option('--likelihood_function', type=click.STRING,
               default='probit',
               help='Should be either probit or logistic')
-def main(num_neurons, time_steps, num_processes, likelihood_function):
+@click.option('--sparsity', type=click.FLOAT,
+              default=0.3,
+              help='Set sparsity of connectivity, aka ro parameter.')
+@click.option('--pprior', type=click.FLOAT,
+              default=0.3,
+              help='Set pprior for the EP.')
+@click.option('--show_plot', type=click.BOOL,
+              default=False)
+def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, pprior, show_plot):
     # Get the spiking activity
     N = num_neurons
-    ro = 0.3
     T = time_steps
-    J = spike_and_slab(ro, N)
+    J = spike_and_slab(sparsity, N)
     S0 = -np.ones(N)
 
     if likelihood_function == 'probit':
@@ -187,19 +193,21 @@ def main(num_neurons, time_steps, num_processes, likelihood_function):
     indices = range(N)
     inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
     for input_indices in inputs:
-        args_multi.append((S, ro, input_indices))
+        args_multi.append((S, sparsity, input_indices, pprior))
 
     mus = do_multiprocess(multi_process_EP, args_multi, num_processes)
 
     for i, indices in enumerate(inputs):
         J_est_1[indices, :] = mus[i]
-    
+    import ipdb; ipdb.set_trace()
     # plot and compare J and J_est
-    title = 'N_' + str(N) + '_T_' + str(T)
+    title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") + "_pprior_" + str(pprior)
     fig = plt.figure()
     plt.plot([J.min(), J.max()], [J.min(), J.max()], 'k')
     plt.plot(J.flatten(), J_est_1.flatten(), 'o')
     plt.title(title)
+    if show_plot:
+        plt.show()
     fig.savefig(title + '.png')
 
 if __name__ == "__main__":
