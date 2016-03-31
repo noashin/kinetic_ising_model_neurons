@@ -204,7 +204,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
     #import ipdb; ipdb.set_trace()
     # plot and compare J and J_est
     title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
-            + "_pprior_" + str(pprior) + likelihood_function
+            + "_pprior_" + str(pprior) + "_"+ likelihood_function
     fig = plt.figure()
     plt.plot([J.min(), J.max()], [J.min(), J.max()], 'k')
     plt.plot(J.flatten(), J_est_1.flatten(), 'o')
