@@ -201,7 +201,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
 
     for i, indices in enumerate(inputs):
         J_est_1[indices, :] = mus[i]
-    import ipdb; ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
     # plot and compare J and J_est
     title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
             + "_pprior_" + str(pprior) + likelihood_function
