@@ -1,10 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
+import scipy.io as sio
 from scipy.special import expit
 import seaborn
 import multiprocessing as multiprocess
 import click
+import sys
 
 from spikes_activity_generator import generate_spikes, spike_and_slab
 import parameters_update_prior_terms as prior_update
@@ -118,7 +120,7 @@ def EP(activity, ro, n, pprior, cdf_factor):
 
         maxdiff = np.max([np.abs(nu - nu_backup), np.abs(mu - mu_backup), np.abs(p_ - p_backup)])
 
-        convergence = maxdiff < 1e-7
+        convergence = maxdiff < 1e-5
         nu_backup = nu
         mu_backup = mu
         p_backup = p_
@@ -151,6 +153,50 @@ def do_multiprocess(function, function_args, num_processes):
         results_list = [function(some_args) for some_args in function_args]
     return results_list
 
+
+def get_activity_from_file(mat_file):
+    ''' Given  .mat file this funciton extract the activity matrix S
+    and connectivity matrix J from the file.
+    The file should contain an array S and an array J.
+
+    :param mat_file: path to the mat file
+    :return: S, J
+    '''
+
+    try:
+        mat_cont = sio.loadmat(mat_file)
+        S = mat_cont['S']
+        J = mat_cont['J']
+    except IOError:
+        print 'Wrong mat file name'
+        sys.exit(1)
+    except KeyError:
+        print 'mat file does not contain S or J '
+        sys.exit(1)
+
+    return S, J
+
+def get_params_from_file_name(mat_file):
+
+    try:
+        # assuming the type of likelihood function is the last word in the file name,
+        # between the last '_' and '.mat'
+        last_index = mat_file[::-1].index('_')
+        f_l = len(mat_file)
+        likelihood_function = mat_file[f_l - last_index: mat_file.index('.')]
+
+        #assuming sparsity is between '_ro' and another '_'
+        ro_index = mat_file.index('_ro_')
+        ro_start = ro_index + len('_ro_')
+        ro_str = mat_file[ro_start: f_l - last_index - 1]
+        ro = float(ro_str) / 10
+    except ValueError:
+        print 'file name does not containt likelihood or ro as expected'
+        sys.exit(1)
+
+    return likelihood_function, ro
+
+
 @click.command()
 @click.option('--num_neurons', type=click.INT,
               default=10,
@@ -171,23 +217,33 @@ def do_multiprocess(function, function_args, num_processes):
               help='Set pprior for the EP.')
 @click.option('--show_plot', type=click.BOOL,
               default=False)
-def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, pprior, show_plot):
+@click.option('--activity_mat_file', type=click.STRING,
+              default='')
+def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, pprior, show_plot, activity_mat_file):
     # Get the spiking activity
-    N = num_neurons
-    T = time_steps
-    J = spike_and_slab(sparsity, N)
-    S0 = -np.ones(N)
+    if activity_mat_file:
+        S, J = get_activity_from_file(activity_mat_file)
+        N = S.shape[1]
+        T = S.shape[0]
 
-    if likelihood_function == 'probit':
-        energy_function = stats.norm.cdf
-        cdf_factor = 1.0
-    elif likelihood_function == 'logistic':
-        energy_function = expit
-        cdf_factor = 1.6
+        likelihood_function, ro = get_params_from_file_name(activity_mat_file)
+
     else:
-        raise ValueError('Unknown likelihood function')
+        N = num_neurons
+        T = time_steps
+        J = spike_and_slab(sparsity, N)
+        S0 = -np.ones(N)
 
-    S = generate_spikes(N, T, S0, J, energy_function)
+        if likelihood_function == 'probit':
+            energy_function = stats.norm.cdf
+        elif likelihood_function == 'logistic':
+            energy_function = expit
+        else:
+            raise ValueError('Unknown likelihood function')
+
+        S = generate_spikes(N, T, S0, J, energy_function)
+
+    cdf_factor = 1.0 if likelihood_function == 'probit' else 1.6
 
     # infere coupling from S
     J_est_1 = np.empty(J.shape)
@@ -201,7 +257,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
 
     for i, indices in enumerate(inputs):
         J_est_1[indices, :] = mus[i]
-    #import ipdb; ipdb.set_trace()
+    import ipdb; ipdb.set_trace()
     # plot and compare J and J_est
     title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
             + "_pprior_" + str(pprior) + "_"+ likelihood_function
