@@ -46,7 +46,7 @@ def spike_and_slab(ro, N):
     return gamma * normal_dist
 
 
-def generate_spikes(N, T, S0, J, energy_function):
+def generate_spikes(N, T, S0, J, energy_function, no_spike = -1):
     """ Generates spike data according to kinetic Ising model
 
     :param J: numpy.ndarray (N, N)
@@ -63,7 +63,7 @@ def generate_spikes(N, T, S0, J, energy_function):
     # Initialize array for data
     S = np.empty((T, N))
     # Set initial spike pattern
-    S[0] = S0
+    S[0] = S0 if no_spike == -1 else np.zeros(N)
     # Generate random numbers
     X = np.random.rand(T-1, N)
     #X = np.random.normal(size=(T-1, N))
@@ -73,7 +73,10 @@ def generate_spikes(N, T, S0, J, energy_function):
         # Compute probabilities of neuron firing
         p = kinetic_ising_model(np.array(S[i - 1, :]), J, energy_function)
         # Check if spike or not
-        S[i, :] = 2 * (X[i - 1] < p) - 1
+        if no_spike == -1:
+            S[i, :] = 2 * (X[i - 1] < p) - 1
+        else:
+            S[i, :] = 2 * (X[i - 1] < p) / 2.0
         #S[i, :] = 2*(X[i-1] + np.dot(np.array(S[i-1, :]), J) >= 0) - 1
 
     return S
