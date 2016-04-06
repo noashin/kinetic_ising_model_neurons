@@ -176,6 +176,7 @@ def get_activity_from_file(mat_file):
 
     return S, J
 
+
 def get_params_from_file_name(mat_file):
 
     try:
@@ -244,12 +245,13 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
         S = generate_spikes(N, T, S0, J, energy_function)
 
     cdf_factor = 1.0 if likelihood_function == 'probit' else 1.6
-
+    # import ipdb; ipdb.set_trace()
     # infere coupling from S
     J_est_1 = np.empty(J.shape)
     args_multi = []
     indices = range(N)
     inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
+
     for input_indices in inputs:
         args_multi.append((S, sparsity, input_indices, pprior, cdf_factor))
 
@@ -257,7 +259,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
 
     for i, indices in enumerate(inputs):
         J_est_1[indices, :] = mus[i]
-    import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     # plot and compare J and J_est
     title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
             + "_pprior_" + str(pprior) + "_"+ likelihood_function
