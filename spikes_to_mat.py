@@ -1,3 +1,10 @@
+'''
+This script is used to Generate connectivity and activity matrices and store
+them in a .mat files in order to use them in a Matlab application that
+uses the LASSO method for inference.
+'''
+
+
 import click
 import numpy as np
 from scipy import stats
