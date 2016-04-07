@@ -7,6 +7,8 @@ import seaborn
 import multiprocessing as multiprocess
 import click
 import sys
+import os
+import scipy.io as sio
 
 from spikes_activity_generator import generate_spikes, spike_and_slab
 import parameters_update_prior_terms as prior_update
@@ -206,6 +208,32 @@ def get_params_from_file_name(mat_file, likelihood_function):
     return likelihood_function, ro
 
 
+
+def plot_and_save(S, J, bias, sparsity, J_est, likelihood_function, pprior, show_plot):
+    N = S.shape[1] - bias
+    T = S.shape[0]
+
+    # create a new directory to save the results and the plot
+    dir_name = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
+            + "_pprior_" + str(pprior).replace('.', '') + "_"+ likelihood_function
+    if not os.path.exists(dir_name):
+        os.makedirs(dir_name)
+
+    fig = plt.figure()
+    plt.plot([J.min(), J.max()], [J.min(), J.max()], 'k')
+    plt.plot(J.flatten(), J_est.flatten(), 'o')
+    plt.title('J vs. J_est')
+    plt.ylabel('J_est')
+    plt.xlabel('J')
+    if show_plot:
+        plt.show()
+    fig.savefig('J_comparison' + '.png')
+
+    # Save simulation data to file
+    file_path = os.path.join(dir_name, 'S_J_J_est_EP.json')
+    sio.savemat(file_path, {'S': S, 'J': J, 'J_est': J_est})
+
+
 @click.command()
 @click.option('--num_neurons', type=click.INT,
               default=10,
@@ -276,17 +304,8 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity,
     for i, indices in enumerate(inputs):
         J_est_1[:, indices] = np.array(mus[i]).transpose()
 
-    # plot and compare J and J_est
-    title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
-            + "_pprior_" + str(pprior) + "_"+ likelihood_function
-    fig = plt.figure()
-    plt.plot([J.min(), J.max()], [J.min(), J.max()], 'k')
-    plt.plot(J.flatten(), J_est_1.flatten(), 'o')
-    plt.title(title)
-    if show_plot:
-        plt.show()
+    plot_and_save(S, J, bias, sparsity, J_est_1, likelihood_function, pprior, show_plot)
 
-    fig.savefig(title + '.png')
 
 if __name__ == "__main__":
     main()
