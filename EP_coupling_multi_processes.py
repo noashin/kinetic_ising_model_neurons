@@ -228,7 +228,11 @@ def get_params_from_file_name(mat_file, likelihood_function):
               default=False)
 @click.option('--activity_mat_file', type=click.STRING,
               default='')
-def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, pprior, show_plot, activity_mat_file):
+@click.option('--bias', type=click.INT,
+              default=0,
+              help='1 if bias should be included in the model, 0 otherwise')
+def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity,
+         pprior, show_plot, activity_mat_file, bias):
     # Get the spiking activity
     if activity_mat_file:
         S, J = get_activity_from_file(activity_mat_file)
@@ -238,10 +242,16 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
         likelihood_function, ro = get_params_from_file_name(activity_mat_file, likelihood_function)
 
     else:
+
+        if bias != 0 and bias != 1:
+            raise ValueError('bias should be either 1 or 0')
+
         N = num_neurons
         T = time_steps
-        J = spike_and_slab(sparsity, N)
-        S0 = -np.ones(N)
+
+        # Add a column for bias if it is part of the model
+        J = spike_and_slab(sparsity, N, bias)
+        S0 = - np.ones(N + bias)
 
         if likelihood_function == 'probit':
             energy_function = stats.norm.cdf
@@ -250,24 +260,22 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
         else:
             raise ValueError('Unknown likelihood function')
 
-        S = generate_spikes(N, T, S0, J, energy_function)
+        S = generate_spikes(N, T, S0, J, energy_function, bias)
 
     cdf_factor = 1.0 if likelihood_function == 'probit' else 1.6
-    # import ipdb; ipdb.set_trace()
+
     # infere coupling from S
     J_est_1 = np.empty(J.shape)
     args_multi = []
     indices = range(N)
     inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
-
     for input_indices in inputs:
         args_multi.append((S, sparsity, input_indices, pprior, cdf_factor))
 
     mus = do_multiprocess(multi_process_EP, args_multi, num_processes)
-
     for i, indices in enumerate(inputs):
-        J_est_1[indices, :] = mus[i]
-    # import ipdb; ipdb.set_trace()
+        J_est_1[:, indices] = np.array(mus[i]).transpose()
+
     # plot and compare J and J_est
     title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
             + "_pprior_" + str(pprior) + "_"+ likelihood_function
@@ -277,6 +285,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
     plt.title(title)
     if show_plot:
         plt.show()
+
     fig.savefig(title + '.png')
 
 if __name__ == "__main__":

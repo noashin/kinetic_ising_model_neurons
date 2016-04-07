@@ -35,18 +35,26 @@ def compute_fields(S, J):
     """
 
     # compute
-    H = np.dot(J, S)
+    H = np.dot(S, J)
     return H
 
 
-def spike_and_slab(ro, N):
-    gamma = stats.bernoulli.rvs(p=ro, size=(N, N))
-    normal_dist = np.random.randn(N, N)
+def spike_and_slab(ro, N, bias):
+    ''' This function generate spike and priors
+
+    :param ro: sparsity
+    :param N: number of neurons
+    :param bias: 1 if bias is included in the model, 0 other wise
+    :return:
+    '''
+
+    gamma = stats.bernoulli.rvs(p=ro, size=(N + bias, N))
+    normal_dist = np.random.randn(N + bias, N)
 
     return gamma * normal_dist
 
 
-def generate_spikes(N, T, S0, J, energy_function, no_spike = -1):
+def generate_spikes(N, T, S0, J, energy_function, bias, no_spike = -1):
     """ Generates spike data according to kinetic Ising model
 
     :param J: numpy.ndarray (N, N)
@@ -55,15 +63,20 @@ def generate_spikes(N, T, S0, J, energy_function, no_spike = -1):
         Length of trajectory that is generated.
     :param S0: numpy.ndarray (N)
         Initial pattern that is sampling started from.
+    :param bias: 1 if bias is included in the model. 0 other wise.
+    :param no_spike: what number should represent 'no_spike'. Default is -1.
 
     :return: numpy.ndarray (T, N)
         Binary data where an entry is either 1 ('spike') or -1 ('silence'). First row is only ones for external fields.
     """
 
     # Initialize array for data
-    S = np.empty((T, N))
+    S = np.empty([T, N + bias])
     # Set initial spike pattern
-    S[0] = S0 if no_spike == -1 else np.zeros(N)
+    S[0] = S0 if no_spike == -1 else np.zeros(N + bias)
+    # Last column in the activity matrix is of the bias and should be 1 at all times
+    if bias:
+        S[:, N] = 1
     # Generate random numbers
     X = np.random.rand(T-1, N)
     #X = np.random.normal(size=(T-1, N))
@@ -71,12 +84,12 @@ def generate_spikes(N, T, S0, J, energy_function, no_spike = -1):
     # Iterate through all time points
     for i in range(1, T):
         # Compute probabilities of neuron firing
-        p = kinetic_ising_model(np.array(S[i - 1, :]), J, energy_function)
+        p = kinetic_ising_model(np.array([S[i - 1]]), J, energy_function)
         # Check if spike or not
         if no_spike == -1:
-            S[i, :] = 2 * (X[i - 1] < p) - 1
+            S[i, :N] = 2 * (X[i - 1] < p) - 1
         else:
-            S[i, :] = 2 * (X[i - 1] < p) / 2.0
+            S[i, :N] = 2 * (X[i - 1] < p) / 2.0
         #S[i, :] = 2*(X[i-1] + np.dot(np.array(S[i-1, :]), J) >= 0) - 1
 
     return S
