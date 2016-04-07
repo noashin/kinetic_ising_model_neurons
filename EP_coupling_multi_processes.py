@@ -181,7 +181,7 @@ def get_activity_from_file(mat_file):
     return S, J
 
 
-def get_params_from_file_name(mat_file):
+def get_params_from_file_name(mat_file, likelihood_function):
 
     try:
         # assuming the type of likelihood function is the last word in the file name,
@@ -190,6 +190,8 @@ def get_params_from_file_name(mat_file):
         f_l = len(mat_file)
         if 'realistic' not in mat_file:
             likelihood_function = mat_file[f_l - last_index: mat_file.index('.')]
+        else:
+            likelihood_function = likelihood_function
 
         #assuming sparsity is between '_ro' and another '_'
         ro_index = mat_file.index('_ro_')
@@ -232,7 +234,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
         N = S.shape[1]
         T = S.shape[0]
 
-        likelihood_function, ro = get_params_from_file_name(activity_mat_file)
+        likelihood_function, ro = get_params_from_file_name(activity_mat_file, likelihood_function)
 
     else:
         N = num_neurons
