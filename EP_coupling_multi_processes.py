@@ -184,7 +184,8 @@ def get_params_from_file_name(mat_file):
         # between the last '_' and '.mat'
         last_index = mat_file[::-1].index('_')
         f_l = len(mat_file)
-        likelihood_function = mat_file[f_l - last_index: mat_file.index('.')]
+        if 'realistic' not in mat_file:
+            likelihood_function = mat_file[f_l - last_index: mat_file.index('.')]
 
         #assuming sparsity is between '_ro' and another '_'
         ro_index = mat_file.index('_ro_')
