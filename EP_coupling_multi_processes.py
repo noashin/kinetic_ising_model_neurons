@@ -170,6 +170,7 @@ def get_activity_from_file(mat_file):
         if 'realistic' in mat_file:
             S = mat_cont['S'].astype(float)
             S[S==255.0] = -1.0
+            S = S.transpose()
 
     except IOError:
         print 'Wrong mat file name'
