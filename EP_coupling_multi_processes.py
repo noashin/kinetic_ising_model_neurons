@@ -227,7 +227,7 @@ def plot_and_save(S, J, bias, sparsity, J_est, likelihood_function, pprior, show
     plt.xlabel('J')
     if show_plot:
         plt.show()
-    fig.savefig('J_comparison' + '.png')
+    fig.savefig(os.path.join(dir_name, 'J_comparison.png'))
 
     # Save simulation data to file
     file_path = os.path.join(dir_name, 'S_J_J_est_EP.json')
