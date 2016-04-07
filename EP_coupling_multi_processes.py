@@ -165,8 +165,12 @@ def get_activity_from_file(mat_file):
 
     try:
         mat_cont = sio.loadmat(mat_file)
-        S = mat_cont['S']
         J = mat_cont['J']
+        # The activity genarated by the realistic model is saved as unit8 and should be converted to float.
+        if 'realistic' in mat_file:
+            S = mat_cont['S'].astype(float)
+            S[S==255.0] = -1.0
+
     except IOError:
         print 'Wrong mat file name'
         sys.exit(1)
