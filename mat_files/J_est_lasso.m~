@@ -1,6 +1,6 @@
 function [] = J_est_lasso()
 
-files = dir('*.mat');
+files = dir(strcat(, '/*.mat'));
 
 for file = files'
     filename = file.name;
