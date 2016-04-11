@@ -168,9 +168,10 @@ def get_activity_from_file(mat_file):
     try:
         mat_cont = sio.loadmat(mat_file)
         J = mat_cont['J']
+        J_est_lasso = mat_cont['J_est_1'] if 'J_est_1' in mat_cont.keys() else []
         # The activity genarated by the realistic model is saved as unit8 and should be converted to float.
+        S = mat_cont['S'].astype(float)
         if 'realistic' in mat_file:
-            S = mat_cont['S'].astype(float)
             S[S==255.0] = -1.0
             S = S.transpose()
 
@@ -180,26 +181,25 @@ def get_activity_from_file(mat_file):
     except KeyError:
         print 'mat file does not contain S or J '
         sys.exit(1)
-
-    return S, J
+    return S, J, J_est_lasso
 
 
 def get_params_from_file_name(mat_file, likelihood_function):
 
     try:
         # assuming the type of likelihood function is the last word in the file name,
-        # between the last '_' and '.mat'
-        last_index = mat_file[::-1].index('_')
-        f_l = len(mat_file)
+        # between the last '_' and '.mat', or that it is before 'J_est'
+        indices_ = [i for i, ltr in enumerate(mat_file) if ltr == '_']
         if 'realistic' not in mat_file:
-            likelihood_function = mat_file[f_l - last_index: mat_file.index('.')]
+            ending = mat_file.index('_J_est') if 'J_est' in mat_file else mat_file.index('.mat')
+            likelihood_function = mat_file[indices_[7] + 1: ending]
         else:
             likelihood_function = likelihood_function
 
         #assuming sparsity is between '_ro' and another '_'
         ro_index = mat_file.index('_ro_')
         ro_start = ro_index + len('_ro_')
-        ro_str = mat_file[ro_start: f_l - last_index - 1]
+        ro_str = mat_file[ro_start: indices_[7]]
         ro = float(ro_str) / 10
     except ValueError:
         print 'file name does not containt likelihood or ro as expected'
@@ -208,30 +208,56 @@ def get_params_from_file_name(mat_file, likelihood_function):
     return likelihood_function, ro
 
 
+def plot_results(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_function, pprior, save_results):
+    N = S.shape[1] - bias
+    T = S.shape[0]
+    title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
+            + "_pprior_" + str(pprior).replace('.', '') + "_" + likelihood_function
 
-def plot_and_save(S, J, bias, sparsity, J_est, likelihood_function, pprior, show_plot):
+    if list(J_est_lasso) and list(J_est_EP):
+        f, axarr = plt.subplots(2, sharex=True)
+        axarr[0].plot([J.min(), J.max()], [J.min(), J.max()], 'k')
+        axarr[0].plot(J.flatten(), J_est_EP.transpose().flatten(), 'o')
+        axarr[0].set_ylabel('J_est_EP')
+        axarr[0].set_title(title)
+        axarr[1].plot([J.min(), J.max()], [J.min(), J.max()], 'k')
+        axarr[1].plot(J.flatten(), J_est_lasso.flatten() / 2.0, 'o')
+        axarr[1].set_ylabel('J_est_lasso')
+        axarr[1].set_xlabel('J')
+
+    else:
+        f = plt.figure()
+        J_est = J_est_EP.transpose() if list(J_est_EP) else J_est_lasso
+        ylabel = 'J_est_EP' if J_est_EP else 'J_est_lasso'
+        correction = 1.0 if J_est_EP else 2.0
+        plt.plot([J.min(), J.max()], [J.min(), J.max()], 'k')
+        plt.plot(J.flatten(), J_est.flatten() / correction, 'o')
+        plt.title(title)
+        plt.ylabel(ylabel)
+        plt.xlabel('J')
+    if save_results:
+        f.savefig(os.path.join(title, 'J_vs_J_est.png'))
+
+    plt.show()
+
+
+def save_results_to_file(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_function, pprior):
     N = S.shape[1] - bias
     T = S.shape[0]
 
     # create a new directory to save the results and the plot
     dir_name = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
-            + "_pprior_" + str(pprior).replace('.', '') + "_"+ likelihood_function
+            + "_pprior_" + str(pprior).replace('.', '') + "_" + likelihood_function
     if not os.path.exists(dir_name):
         os.makedirs(dir_name)
 
-    fig = plt.figure()
-    plt.plot([J.min(), J.max()], [J.min(), J.max()], 'k')
-    plt.plot(J.flatten(), J_est.flatten(), 'o')
-    plt.title('J vs. J_est')
-    plt.ylabel('J_est')
-    plt.xlabel('J')
-    if show_plot:
-        plt.show()
-    fig.savefig(os.path.join(dir_name, 'J_comparison.png'))
-
     # Save simulation data to file
-    file_path = os.path.join(dir_name, 'S_J_J_est_EP.json')
-    sio.savemat(file_path, {'S': S, 'J': J, 'J_est': J_est})
+    if list(J_est_lasso):
+        file_path = os.path.join(dir_name, 'S_J_J_est_lasso_EP.json')
+        sio.savemat(file_path, {'S': S, 'J': J, 'J_est_lasso': J_est_lasso, 'J_est_EP': J_est_EP})
+    else:
+        file_path = os.path.join(dir_name, 'S_J_J_est_EP.json')
+        sio.savemat(file_path, {'S': S, 'J': J, 'J_est_EP': J_est_EP})
 
 
 @click.command()
@@ -252,18 +278,23 @@ def plot_and_save(S, J, bias, sparsity, J_est, likelihood_function, pprior, show
 @click.option('--pprior', type=click.FLOAT,
               default=0.3,
               help='Set pprior for the EP.')
-@click.option('--show_plot', type=click.BOOL,
+@click.option('--plot', type=click.BOOL,
+              default=False)
+@click.option('--save_results', type=click.BOOL,
               default=False)
 @click.option('--activity_mat_file', type=click.STRING,
               default='')
 @click.option('--bias', type=click.INT,
               default=0,
               help='1 if bias should be included in the model, 0 otherwise')
+@click.option('--do_inference', type=click.BOOL,
+              default=True,
+              help='If false then the script will only plot J and J_est from file')
 def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity,
-         pprior, show_plot, activity_mat_file, bias):
+         pprior, plot, save_results, activity_mat_file, bias, do_inference):
     # Get the spiking activity
     if activity_mat_file:
-        S, J = get_activity_from_file(activity_mat_file)
+        S, J, J_est_lasso = get_activity_from_file(activity_mat_file)
         N = S.shape[1]
         T = S.shape[0]
 
@@ -280,6 +311,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity,
         # Add a column for bias if it is part of the model
         J = spike_and_slab(sparsity, N, bias)
         S0 = - np.ones(N + bias)
+        J_est_lasso = []
 
         if likelihood_function == 'probit':
             energy_function = stats.norm.cdf
@@ -292,20 +324,26 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity,
 
     cdf_factor = 1.0 if likelihood_function == 'probit' else 1.6
 
-    # infere coupling from S
-    J_est_1 = np.empty(J.shape)
-    args_multi = []
-    indices = range(N)
-    inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
-    for input_indices in inputs:
-        args_multi.append((S, sparsity, input_indices, pprior, cdf_factor))
+    if do_inference:
+        # infere coupling from S
+        J_est_EP = np.empty(J.shape)
+        args_multi = []
+        indices = range(N)
+        inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
+        for input_indices in inputs:
+            args_multi.append((S, sparsity, input_indices, pprior, cdf_factor))
 
-    mus = do_multiprocess(multi_process_EP, args_multi, num_processes)
-    for i, indices in enumerate(inputs):
-        J_est_1[:, indices] = np.array(mus[i]).transpose()
+        mus = do_multiprocess(multi_process_EP, args_multi, num_processes)
+        for i, indices in enumerate(inputs):
+            J_est_EP[:, indices] = np.array(mus[i]).transpose()
+    else:
+        J_est_EP = []
 
-    plot_and_save(S, J, bias, sparsity, J_est_1, likelihood_function, pprior, show_plot)
+    if save_results:
+        save_results_to_file(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_function, pprior)
 
+    if plot:
+        plot_results(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_function, pprior, save_results)
 
 if __name__ == "__main__":
     main()
