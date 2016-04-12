@@ -15,6 +15,7 @@ import parameters_update_prior_terms as prior_update
 import parameters_update_likelihood_terms as likelihood_update
 
 
+
 def update_likelihood_terms(mu, nu, v, m, s, activity, n, cdf_factor):
     '''
 
@@ -80,7 +81,6 @@ def EP(activity, ro, n, pprior, cdf_factor):
     mu_backup = np.copy(mu)
     nu_backup = np.copy(nu)
     p_backup = np.copy(p_)
-    m_backup = np.copy(m)
 
     itr = 0
     max_itr = 300
@@ -126,7 +126,6 @@ def EP(activity, ro, n, pprior, cdf_factor):
         nu_backup = nu
         mu_backup = mu
         p_backup = p_
-        m_backup = m
 
         itr = itr + 1
 
