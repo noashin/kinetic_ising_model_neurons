@@ -15,6 +15,30 @@ import parameters_update_prior_terms as prior_update
 import parameters_update_likelihood_terms as likelihood_update
 
 
+def calc_log_evidence(a, b, nu, s, mu, m, v, ro, N):
+    '''This function calculate the log evidence based on the infered model
+
+    :param a:
+    :param b:
+    :param nu:
+    :param s:
+    :param mu:
+    :param m:
+    :param v:
+    :param ro:
+    :param N:
+    :return:
+    '''
+    v_learnt = v[1:, :]
+    m_learnt = m[1:, :]
+
+    B = np.dot(mu, np.multiply(mu, nu / 1)) - np.sum(np.multiply(v_learnt**(-1), m_learnt**2))
+    log_C = np.sum(np.log(ro * a + (1-ro) * b))
+
+    log_evidence = log_C + np.log(2.0 * np.pi) * N / 2.0 + np.sum(0.5 * np.log(nu)) + B / 2 + np.sum(np.log(s))
+
+    return log_evidence
+
 
 def update_likelihood_terms(mu, nu, v, m, s, activity, n, cdf_factor):
     '''
@@ -129,6 +153,7 @@ def EP(activity, ro, n, pprior, cdf_factor):
 
         itr = itr + 1
 
+    log_evidence = calc_log_evidence(a, b, nu, s, mu, m, v, ro, N)
     return mu
 
 
