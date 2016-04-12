@@ -15,7 +15,7 @@ import parameters_update_prior_terms as prior_update
 import parameters_update_likelihood_terms as likelihood_update
 
 
-def calc_log_evidence(a, b, nu, s, mu, m, v, ro, N):
+def calc_log_evidence(a, b, nu, s, mu, m, v, N):
     '''This function calculate the log evidence based on the infered model
 
     :param a:
@@ -32,10 +32,14 @@ def calc_log_evidence(a, b, nu, s, mu, m, v, ro, N):
     v_learnt = v[1:, :]
     m_learnt = m[1:, :]
 
+    ros = np.arange(0.01, 1.0, 0.01)
     B = np.dot(mu, np.multiply(mu, nu / 1)) - np.sum(np.multiply(v_learnt**(-1), m_learnt**2))
-    log_C = np.sum(np.log(ro * a + (1-ro) * b))
 
-    log_evidence = log_C + np.log(2.0 * np.pi) * N / 2.0 + np.sum(0.5 * np.log(nu)) + B / 2 + np.sum(np.log(s))
+    log_C = [np.sum(np.log(ro * a + (1-ro) * b)) for ro in ros]
+
+    second_term = np.log(2.0 * np.pi) * N / 2.0 + np.sum(0.5 * np.log(nu)) + B / 2 + np.sum(np.log(s))
+    second_vec = np.repeat(second_term, len(ros))
+    log_evidence = log_C + second_vec
 
     return log_evidence
 
@@ -153,13 +157,13 @@ def EP(activity, ro, n, pprior, cdf_factor):
 
         itr = itr + 1
 
-    log_evidence = calc_log_evidence(a, b, nu, s, mu, m, v, ro, N)
-    return mu
+    log_evidence = calc_log_evidence(a, b, nu, s, mu, m, v, N)
+    return {'mu': mu, 'log_evidence': log_evidence}
 
 
 def EP_single_neuron(activity, ro, ns, pprior, cdf_factor):
-    mus = [EP(activity, ro, n, pprior, cdf_factor) for n in ns]
-    return mus
+    results = [EP(activity, ro, n, pprior, cdf_factor) for n in ns]
+    return results
 
 
 def multi_process_EP(args):
@@ -351,23 +355,31 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity,
     if do_inference:
         # infere coupling from S
         J_est_EP = np.empty(J.shape)
+        log_evidences = np.empty(99)
+
         args_multi = []
         indices = range(N)
         inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
         for input_indices in inputs:
             args_multi.append((S, sparsity, input_indices, pprior, cdf_factor))
 
-        mus = do_multiprocess(multi_process_EP, args_multi, num_processes)
+        results = do_multiprocess(multi_process_EP, args_multi, num_processes)
+
         for i, indices in enumerate(inputs):
-            J_est_EP[:, indices] = np.array(mus[i]).transpose()
+            mus = [results[i][j]['mu'] for j in range(len(results[i]))]
+            J_est_EP[:, indices] = np.array(mus).transpose()
+
+            evidences_tmp = [results[i][j]['log_evidence'] for j in range(len(results[i]))]
+            log_evidences += np.sum(np.array(evidences_tmp), axis=0)
     else:
         J_est_EP = []
-
+    
     if save_results:
         save_results_to_file(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_function, pprior)
 
     if plot:
-        plot_results(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_function, pprior, save_results)
+        plot_results(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_function, pprior,
+                     save_results)
 
 if __name__ == "__main__":
     main()
