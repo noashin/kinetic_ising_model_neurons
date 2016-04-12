@@ -6,9 +6,9 @@ from scipy.special import expit
 import seaborn
 import multiprocessing as multiprocess
 import click
+import math
 import sys
 import os
-import scipy.io as sio
 
 from spikes_activity_generator import generate_spikes, spike_and_slab
 import parameters_update_prior_terms as prior_update
@@ -217,7 +217,7 @@ def plot_results(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_functio
     if list(J_est_lasso) and list(J_est_EP):
         f, axarr = plt.subplots(2, sharex=True)
         axarr[0].plot([J.min(), J.max()], [J.min(), J.max()], 'k')
-        axarr[0].plot(J.flatten(), J_est_EP.transpose().flatten(), 'o')
+        axarr[0].plot(J.flatten(), J_est_EP.flatten(), 'o')
         axarr[0].set_ylabel('J_est_EP')
         axarr[0].set_title(title)
         axarr[1].plot([J.min(), J.max()], [J.min(), J.max()], 'k')
@@ -227,9 +227,9 @@ def plot_results(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_functio
 
     else:
         f = plt.figure()
-        J_est = J_est_EP.transpose() if list(J_est_EP) else J_est_lasso
-        ylabel = 'J_est_EP' if J_est_EP else 'J_est_lasso'
-        correction = 1.0 if J_est_EP else 2.0
+        J_est = J_est_EP if list(J_est_EP) else J_est_lasso
+        ylabel = 'J_est_EP' if list(J_est_EP) else 'J_est_lasso'
+        correction = 1.0 if list(J_est_EP) else 2.0
         plt.plot([J.min(), J.max()], [J.min(), J.max()], 'k')
         plt.plot(J.flatten(), J_est.flatten() / correction, 'o')
         plt.title(title)
