@@ -1,2 +1,5 @@
 *.pyc
 *.xml
+.idea/*
+EP_coupling_multi_processes_evidence_test.py
+
