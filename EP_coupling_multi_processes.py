@@ -6,13 +6,16 @@ from scipy.special import expit
 import seaborn
 import multiprocessing as multiprocess
 import click
-import math
 import sys
 import os
 
 from spikes_activity_generator import generate_spikes, spike_and_slab
+from measurements import r_square, corr_coef, zero_matching, sign_matching
 import parameters_update_prior_terms as prior_update
 import parameters_update_likelihood_terms as likelihood_update
+
+
+ros = np.arange(0.01, 1.0, 0.01)
 
 
 def calc_log_evidence(a, b, nu, s, mu, m, v, N):
@@ -31,8 +34,8 @@ def calc_log_evidence(a, b, nu, s, mu, m, v, N):
     '''
     v_learnt = v[1:, :]
     m_learnt = m[1:, :]
+    s = s[~np.isnan(s)]
 
-    ros = np.arange(0.01, 1.0, 0.01)
     B = np.dot(mu, np.multiply(mu, nu / 1)) - np.sum(np.multiply(v_learnt**(-1), m_learnt**2))
 
     log_C = [np.sum(np.log(ro * a + (1-ro) * b)) for ro in ros]
@@ -236,11 +239,16 @@ def get_params_from_file_name(mat_file, likelihood_function):
     return likelihood_function, ro
 
 
-def plot_results(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_function, pprior, save_results):
+def plot_results(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_function,
+                 pprior, save_results, log_evidences, measurements, ppriors):
     N = S.shape[1] - bias
     T = S.shape[0]
-    title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
-            + "_pprior_" + str(pprior).replace('.', '') + "_" + likelihood_function
+
+    if len(ppriors) == 1:
+        title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
+                + "_pprior_" + str(ppriors[0]).replace('.', '') + "_" + likelihood_function
+    else:
+        title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") + likelihood_function
 
     if list(J_est_lasso) and list(J_est_EP):
         f, axarr = plt.subplots(2, sharex=True)
@@ -268,24 +276,52 @@ def plot_results(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_functio
 
     plt.show()
 
+    if list(log_evidences):
+        best_ro = ros[np.argmax(log_evidences)]
+        f = plt.figure()
+        plt.plot(ros, log_evidences)
+        plt.xlabel('ro')
+        plt.ylabel('log evidence')
+        plt.title('best ro: ' + str(best_ro))
+        if save_results:
+            f.savefig(os.path.join(title, 'log_evidence.png'))
+    plt.show()
 
-def save_results_to_file(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_function, pprior):
+    if measurements:
+        f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, sharex='col')
+        ax1.plot(ppriors, measurements['r_square'])
+        ax1.set_title('r_square')
+        ax2.plot(ppriors, measurements['corr_coef'])
+        ax2.set_title('corr_coef')
+        ax3.plot(ppriors, measurements['zero_matching'])
+        ax3.set_title('zero_matching')
+        ax4.plot(ppriors, measurements['sign_matching'])
+        ax4.set_title('sign_matching')
+        plt.show()
+        if save_results:
+            f.savefig(os.path.join(title, 'error_measurements.png'))
+
+def save_results_to_file(S, J, bias, sparsity, J_est_EPs, J_est_lasso, likelihood_function, ppriors):
     N = S.shape[1] - bias
     T = S.shape[0]
 
     # create a new directory to save the results and the plot
-    dir_name = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
-            + "_pprior_" + str(pprior).replace('.', '') + "_" + likelihood_function
+    if len(ppriors) == 1:
+        dir_name = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
+                + "_pprior_" + str(ppriors[0]).replace('.', '') + "_" + likelihood_function
+    else:
+        dir_name = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") + likelihood_function
     if not os.path.exists(dir_name):
         os.makedirs(dir_name)
 
     # Save simulation data to file
     if list(J_est_lasso):
         file_path = os.path.join(dir_name, 'S_J_J_est_lasso_EP.json')
-        sio.savemat(file_path, {'S': S, 'J': J, 'J_est_lasso': J_est_lasso, 'J_est_EP': J_est_EP})
+        sio.savemat(file_path, {'S': S, 'J': J, 'J_est_lasso': J_est_lasso,
+                                'J_est_EPs': J_est_EPs, 'ppriors': ppriors})
     else:
         file_path = os.path.join(dir_name, 'S_J_J_est_EP.json')
-        sio.savemat(file_path, {'S': S, 'J': J, 'J_est_EP': J_est_EP})
+        sio.savemat(file_path, {'S': S, 'J': J, 'J_est_EP': J_est_EPs, 'ppriors': ppriors})
 
 
 @click.command()
@@ -318,8 +354,12 @@ def save_results_to_file(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood
 @click.option('--do_inference', type=click.BOOL,
               default=True,
               help='If false then the script will only plot J and J_est from file')
+@click.option('--error_measurements', type=click.BOOL,
+              default=False,
+              help='f true error measurements will be taken for different ppriorI')
 def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity,
-         pprior, plot, save_results, activity_mat_file, bias, do_inference):
+         pprior, plot, save_results, activity_mat_file, bias, do_inference, error_measurements):
+
     # Get the spiking activity
     if activity_mat_file:
         S, J, J_est_lasso = get_activity_from_file(activity_mat_file)
@@ -353,33 +393,56 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity,
     cdf_factor = 1.0 if likelihood_function == 'probit' else 1.6
 
     if do_inference:
-        # infere coupling from S
-        J_est_EP = np.empty(J.shape)
-        log_evidences = np.empty(99)
 
-        args_multi = []
-        indices = range(N)
-        inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
-        for input_indices in inputs:
-            args_multi.append((S, sparsity, input_indices, pprior, cdf_factor))
+        J_est_EPs = []
+        if error_measurements:
+            ppriors = [0.1, 0.2, 0.3, 0.5, 0.7, 0.9]
+            measurements = {'r_square': [], 'corr_coef': [], 'zero_matching': [], 'sign_matching': []}
+        else:
+            ppriors = [pprior]
+            measurements = []
 
-        results = do_multiprocess(multi_process_EP, args_multi, num_processes)
+        for pprior in ppriors:
+            # infere coupling from S
+            J_est_EP = np.empty(J.shape)
+            log_evidences = np.empty(ros.shape[0])
 
-        for i, indices in enumerate(inputs):
-            mus = [results[i][j]['mu'] for j in range(len(results[i]))]
-            J_est_EP[:, indices] = np.array(mus).transpose()
+            #prepare inputs for multi processing
+            args_multi = []
+            indices = range(N)
+            inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
+            for input_indices in inputs:
+                args_multi.append((S, sparsity, input_indices, pprior, cdf_factor))
 
-            evidences_tmp = [results[i][j]['log_evidence'] for j in range(len(results[i]))]
-            log_evidences += np.sum(np.array(evidences_tmp), axis=0)
+            results = do_multiprocess(multi_process_EP, args_multi, num_processes)
+
+            for i, indices in enumerate(inputs):
+                mus = [results[i][j]['mu'] for j in range(len(results[i]))]
+                J_est_EP[:, indices] = np.array(mus).transpose()
+
+                evidences_tmp = [results[i][j]['log_evidence'] for j in range(len(results[i]))]
+                log_evidences += np.sum(np.array(evidences_tmp), axis=0)
+
+            if len(ppriors) > 1:
+                #calculate different error measurements
+                J_est_EPs.append(J_est_EP)
+                measurements['r_square'].append(r_square(J, J_est_EP))
+                measurements['corr_coef'].append(corr_coef(J, J_est_EP))
+                measurements['zero_matching'].append(zero_matching(J, J_est_EP))
+                measurements['sign_matching'].append(sign_matching(J, J_est_EP))
+
     else:
         J_est_EP = []
-    
+        log_evidences = []
+        ppriors = []
+
     if save_results:
-        save_results_to_file(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_function, pprior)
+        save_results_to_file(S, J, bias, sparsity, J_est_EPs, J_est_lasso, likelihood_function, ppriors)
 
     if plot:
-        plot_results(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_function, pprior,
-                     save_results)
+        plot_results(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_function,
+                     pprior, save_results, log_evidences, measurements, ppriors)
+
 
 if __name__ == "__main__":
     main()
