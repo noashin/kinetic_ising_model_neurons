@@ -29,8 +29,8 @@ def zero_matching(J, J_est):
     J = J.flatten()
     J_est = J_est.flatten()
 
-    zeros_J = J == 0.0
-    zeros_J_est = J_est == 0.0
+    zeros_J = (J > -0.05) & (J < 0.05)
+    zeros_J_est = (J_est > -0.05) & (J_est < 0.05)
 
     diff_zero = np.logical_and(np.logical_not(np.logical_and(zeros_J, zeros_J_est)), np.logical_or(zeros_J_est, zeros_J))
 
