@@ -248,7 +248,8 @@ def plot_results(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_functio
         title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
                 + "_pprior_" + str(ppriors[0]).replace('.', '') + "_" + likelihood_function
     else:
-        title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") + likelihood_function
+        title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + \
+                str(sparsity).replace(".", "") + '_' + likelihood_function
 
     if list(J_est_lasso) and list(J_est_EP):
         f, axarr = plt.subplots(2, sharex=True)
@@ -310,7 +311,8 @@ def save_results_to_file(S, J, bias, sparsity, J_est_EPs, J_est_lasso, likelihoo
         dir_name = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
                 + "_pprior_" + str(ppriors[0]).replace('.', '') + "_" + likelihood_function
     else:
-        dir_name = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") + likelihood_function
+        dir_name = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + \
+                   str(sparsity).replace(".", "") + + '_' +likelihood_function
     if not os.path.exists(dir_name):
         os.makedirs(dir_name)
 
