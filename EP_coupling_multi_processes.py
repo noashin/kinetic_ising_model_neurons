@@ -289,14 +289,17 @@ def plot_results(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_functio
     plt.show()
 
     if measurements:
+        ppriors = np.array(ppriors)
+        indices = np.argsort(ppriors)
+        ppriors = ppriors[indices]
         f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, sharex='col')
-        ax1.plot(ppriors, measurements['r_square'])
+        ax1.plot(ppriors, np.array(measurements['r_square'])[indices])
         ax1.set_title('r_square')
-        ax2.plot(ppriors, measurements['corr_coef'])
+        ax2.plot(ppriors, np.array(measurements['corr_coef'])[indices])
         ax2.set_title('corr_coef')
-        ax3.plot(ppriors, measurements['zero_matching'])
+        ax3.plot(ppriors, np.array(measurements['zero_matching'])[indices])
         ax3.set_title('zero_matching')
-        ax4.plot(ppriors, measurements['sign_matching'])
+        ax4.plot(ppriors, np.array(measurements['sign_matching'])[indices])
         ax4.set_title('sign_matching')
         plt.show()
         if save_results:
@@ -318,11 +321,11 @@ def save_results_to_file(S, J, bias, sparsity, J_est_EPs, J_est_lasso, likelihoo
 
     # Save simulation data to file
     if list(J_est_lasso):
-        file_path = os.path.join(dir_name, 'S_J_J_est_lasso_EP.json')
+        file_path = os.path.join(dir_name, 'S_J_J_est_lasso_EP')
         sio.savemat(file_path, {'S': S, 'J': J, 'J_est_lasso': J_est_lasso,
                                 'J_est_EPs': J_est_EPs, 'ppriors': ppriors})
     else:
-        file_path = os.path.join(dir_name, 'S_J_J_est_EP.json')
+        file_path = os.path.join(dir_name, 'S_J_J_est_EP')
         sio.savemat(file_path, {'S': S, 'J': J, 'J_est_EP': J_est_EPs, 'ppriors': ppriors})
 
 
@@ -398,7 +401,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity,
 
         J_est_EPs = []
         if error_measurements:
-            ppriors = [0.1, 0.2, 0.3, 0.5, 0.7, 0.9]
+            ppriors = [0.1, 0.2, 0.9, 0.5, 0.7, 0.3]
             measurements = {'r_square': [], 'corr_coef': [], 'zero_matching': [], 'sign_matching': []}
         else:
             ppriors = [pprior]
