@@ -5,9 +5,8 @@ import multiprocessing as multiprocess
 import click
 
 from spikes_activity_generator import generate_spikes, spike_and_slab
-from measurements import r_square, corr_coef, zero_matching, sign_matching
-from plotting_saving import plot_and_save, save_inference_results_to_file
-from mat_files_reader import get_activity_from_file, get_params_from_file_name
+from plotting_saving import save_inference_results_to_file, get_dir_name
+from mat_files_reader import get_J_S_from_mat_file
 import parameters_update_prior_terms as prior_update
 import parameters_update_likelihood_terms as likelihood_update
 
@@ -184,42 +183,53 @@ def do_multiprocess(function, function_args, num_processes):
     return results_list
 
 
-def get_J_S(activity_mat_file, likelihood_function, bias, num_neurons, time_steps, sparsity):
-    # Get the spiking activity
-    if activity_mat_file:
-        S, J, J_est_lasso = get_activity_from_file(activity_mat_file)
-        N = S.shape[1]
-        T = S.shape[0]
-
-        likelihood_function, ro = get_params_from_file_name(activity_mat_file, likelihood_function)
-
-    else:
-
-        if bias != 0 and bias != 1:
+def generate_J_S(likelihood_function, bias, num_neurons, time_steps, sparsity):
+    if bias != 0 and bias != 1:
             raise ValueError('bias should be either 1 or 0')
 
-        N = num_neurons
-        T = time_steps
+    N = num_neurons
+    T = time_steps
 
-        # Add a column for bias if it is part of the model
-        J = spike_and_slab(sparsity, N, bias)
-        S0 = - np.ones(N + bias)
-        J_est_lasso = []
+    # Add a column for bias if it is part of the model
+    J = spike_and_slab(sparsity, N, bias)
+    S0 = - np.ones(N + bias)
 
-        if likelihood_function == 'probit':
-            energy_function = stats.norm.cdf
-        elif likelihood_function == 'logistic':
-            energy_function = expit
-        else:
-            raise ValueError('Unknown likelihood function')
+    if likelihood_function == 'probit':
+        energy_function = stats.norm.cdf
+    elif likelihood_function == 'logistic':
+        energy_function = expit
+    else:
+        raise ValueError('Unknown likelihood function')
 
-        S = generate_spikes(N, T, S0, J, energy_function, bias)
+    S = generate_spikes(N, T, S0, J, energy_function, bias)
 
     cdf_factor = 1.0 if likelihood_function == 'probit' else 1.6
 
-    return N, T, S, J, J_est_lasso, cdf_factor
+    return S, J, cdf_factor
 
 
+def do_inference(S, J, N, num_processes, pprior, sparsity,cdf_factor):
+    # infere coupling from S
+    J_est_EP = np.empty(J.shape)
+    log_evidences = np.empty(ros.shape[0])
+
+    #prepare inputs for multi processing
+    args_multi = []
+    indices = range(N)
+    inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
+    for input_indices in inputs:
+        args_multi.append((S, sparsity, input_indices, pprior, cdf_factor))
+
+    results = do_multiprocess(multi_process_EP, args_multi, num_processes)
+
+    for i, indices in enumerate(inputs):
+        mus = [results[i][j]['mu'] for j in range(len(results[i]))]
+        J_est_EP[:, indices] = np.array(mus).transpose()
+
+        evidences_tmp = [results[i][j]['log_evidence'] for j in range(len(results[i]))]
+        log_evidences += np.sum(np.array(evidences_tmp), axis=0)
+
+    return J_est_EP, log_evidences
 
 @click.command()
 @click.option('--num_neurons',
@@ -238,79 +248,49 @@ def get_J_S(activity_mat_file, likelihood_function, bias, num_neurons, time_step
               help='Set sparsity of connectivity, aka ro parameter.')
 @click.option('--pprior',
               help='Set pprior for the EP. If a list the inference will be done for every pprior')
-@click.option('--plot', type=click.BOOL,
-              default=False,
-              help='If True results will be plotted and saved')
-@click.option('--show_plot', type=click.BOOL,
-              default=False,
-              help='If True plots will be shown to the user')
 @click.option('--activity_mat_file', type=click.STRING,
               default='')
 @click.option('--bias', type=click.INT,
               default=0,
               help='1 if bias should be included in the model, 0 otherwise')
-@click.option('--error_measurements', type=click.BOOL,
-              default=False,
-              help='if true error measurements will be taken for different ppriors')
-def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity,
-         pprior, plot, show_plot, activity_mat_file, bias, error_measurements):
+@click.option('--num_trials', type=click.INT,
+              default=1,
+              help='number of trials with different S ad J for given settings')
+def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, pprior,
+         activity_mat_file, bias, num_trials):
 
-    num_neurons = [int(num) for num in num_neurons.split(',')]
-    time_steps = [int(num) for num in time_steps.split(',')]
-    pprior = [float(num) for num in pprior.split(',')]
+    ppriors = [float(num) for num in pprior.split(',')]
 
-    N, T, S, J, J_est_lasso, cdf_factor = get_J_S(activity_mat_file, likelihood_function,
-                                                  bias, num_neurons, time_steps, sparsity)
-
-    # do the inference
-    J_est_EPs = []
-    if error_measurements:
-        ppriors = [0.1, 0.2, 0.9, 0.5, 0.7, 0.3]
-        measurements = {'r_square': [], 'corr_coef': [], 'zero_matching': [], 'sign_matching': []}
-    else:
-        ppriors = [pprior]
-        measurements = []
-
-    for pprior in ppriors:
-        # infere coupling from S
-        J_est_EP = np.empty(J.shape)
-        log_evidences = np.empty(ros.shape[0])
-
-        #prepare inputs for multi processing
-        args_multi = []
-        indices = range(N)
-        inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
-        for input_indices in inputs:
-            args_multi.append((S, sparsity, input_indices, pprior, cdf_factor))
-
-        results = do_multiprocess(multi_process_EP, args_multi, num_processes)
-
-        for i, indices in enumerate(inputs):
-            mus = [results[i][j]['mu'] for j in range(len(results[i]))]
-            J_est_EP[:, indices] = np.array(mus).transpose()
-
-            evidences_tmp = [results[i][j]['log_evidence'] for j in range(len(results[i]))]
-            log_evidences += np.sum(np.array(evidences_tmp), axis=0)
-
-        if len(ppriors) > 1:
-            #calculate different error measurements
-            J_est_EPs.append(J_est_EP)
-            measurements['r_square'].append(r_square(J, J_est_EP))
-            measurements['corr_coef'].append(corr_coef(J, J_est_EP))
-            measurements['zero_matching'].append(zero_matching(J, J_est_EP))
-            measurements['sign_matching'].append(sign_matching(J, J_est_EP))
-
-    else:
-        J_est_EP = []
+    if activity_mat_file:
+        # If only
+        N, T, S, J, J_est_lasso, cdf_factor = get_J_S_from_mat_file(activity_mat_file, likelihood_function)
+        J_est_EPs = []
         log_evidences = []
-        ppriors = []
+        for pprior in ppriors:
+            results = do_inference(S, J, N, num_processes, pprior, sparsity,cdf_factor)
+            J_est_EPs.append(results[0])
+            log_evidences.append(results[1])
 
-    # save the inference results
-    dir_name = save_inference_results_to_file(S, J, bias, sparsity, J_est_EPs,
-                                              J_est_lasso, likelihood_function, ppriors)
-    # plotting
-    plot_and_save(measurements, J, J_est_lasso, J_est_EP, ppriors, log_evidences, ros, plot, show_plot, dir_name)
+        dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function)
+        save_inference_results_to_file(dir_name, S, J, bias, J_est_EPs, likelihood_function,
+                                   ppriors, log_evidences, ros, J_est_lasso)
 
+    else:
+        num_neurons = [int(num) for num in num_neurons.split(',')]
+        time_steps = [int(num) for num in time_steps.split(',')]
+        for N in num_neurons:
+            for T in time_steps:
+                dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function)
+                S, J, cdf_factor = generate_J_S(likelihood_function, bias, N, T, sparsity)
+                for i in range(num_trials):
+                    J_est_EPs = []
+                    log_evidences = []
+                    for pprior in ppriors:
+                        results = do_inference(S, J, N, num_processes, pprior, sparsity,cdf_factor)
+                        J_est_EPs.append(results[0])
+                        log_evidences.append(results[1])
+                    save_inference_results_to_file(dir_name, S, J, bias, J_est_EPs, likelihood_function,
+                                                   ppriors, log_evidences, ros, [], i)
 
 if __name__ == "__main__":
     main()
