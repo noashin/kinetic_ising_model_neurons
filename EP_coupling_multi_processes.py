@@ -1,17 +1,13 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy import stats
-import scipy.io as sio
 from scipy.special import expit
-import seaborn
 import multiprocessing as multiprocess
 import click
-import sys
-import os
 
 from spikes_activity_generator import generate_spikes, spike_and_slab
 from measurements import r_square, corr_coef, zero_matching, sign_matching
 from plotting_saving import plot_and_save, save_inference_results_to_file
+from mat_files_reader import get_activity_from_file, get_params_from_file_name
 import parameters_update_prior_terms as prior_update
 import parameters_update_likelihood_terms as likelihood_update
 
@@ -186,58 +182,6 @@ def do_multiprocess(function, function_args, num_processes):
     else:
         results_list = [function(some_args) for some_args in function_args]
     return results_list
-
-
-def get_activity_from_file(mat_file):
-    ''' Given  .mat file this funciton extract the activity matrix S
-    and connectivity matrix J from the file.
-    The file should contain an array S and an array J.
-
-    :param mat_file: path to the mat file
-    :return: S, J
-    '''
-
-    try:
-        mat_cont = sio.loadmat(mat_file)
-        J = mat_cont['J']
-        J_est_lasso = mat_cont['J_est_1'] if 'J_est_1' in mat_cont.keys() else []
-        # The activity genarated by the realistic model is saved as unit8 and should be converted to float.
-        S = mat_cont['S'].astype(float)
-        if 'realistic' in mat_file:
-            S[S==255.0] = -1.0
-            S = S.transpose()
-
-    except IOError:
-        print 'Wrong mat file name'
-        sys.exit(1)
-    except KeyError:
-        print 'mat file does not contain S or J '
-        sys.exit(1)
-    return S, J, J_est_lasso
-
-
-def get_params_from_file_name(mat_file, likelihood_function):
-
-    try:
-        # assuming the type of likelihood function is the last word in the file name,
-        # between the last '_' and '.mat', or that it is before 'J_est'
-        indices_ = [i for i, ltr in enumerate(mat_file) if ltr == '_']
-        if 'realistic' not in mat_file:
-            ending = mat_file.index('_J_est') if 'J_est' in mat_file else mat_file.index('.mat')
-            likelihood_function = mat_file[indices_[7] + 1: ending]
-        else:
-            likelihood_function = likelihood_function
-
-        #assuming sparsity is between '_ro' and another '_'
-        ro_index = mat_file.index('_ro_')
-        ro_start = ro_index + len('_ro_')
-        ro_str = mat_file[ro_start: indices_[7]]
-        ro = float(ro_str) / 10
-    except ValueError:
-        print 'file name does not containt likelihood or ro as expected'
-        sys.exit(1)
-
-    return likelihood_function, ro
 
 
 @click.command()
