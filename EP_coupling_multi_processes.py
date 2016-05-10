@@ -222,12 +222,12 @@ def get_J_S(activity_mat_file, likelihood_function, bias, num_neurons, time_step
 
 
 @click.command()
-@click.option('--num_neurons', type=click.INT,
-              default=10,
-              help='number of neurons in the network')
-@click.option('--time_steps', type=click.INT,
-              default=100,
-              help='Number of time stamps. Length of recording')
+@click.option('--num_neurons',
+              help='number of neurons in the network. '
+                   'If a list, the inference will be done for every number of neurons.')
+@click.option('--time_steps',
+              help='Number of time stamps. Length of recording. '
+                   'If a list, the inference will be done for every number of time steps.')
 @click.option('--num_processes', type=click.INT,
               default=1)
 @click.option('--likelihood_function', type=click.STRING,
@@ -236,72 +236,69 @@ def get_J_S(activity_mat_file, likelihood_function, bias, num_neurons, time_step
 @click.option('--sparsity', type=click.FLOAT,
               default=0.3,
               help='Set sparsity of connectivity, aka ro parameter.')
-@click.option('--pprior', type=click.FLOAT,
-              default=0.3,
-              help='Set pprior for the EP.')
+@click.option('--pprior',
+              help='Set pprior for the EP. If a list the inference will be done for every pprior')
 @click.option('--plot', type=click.BOOL,
               default=False,
               help='If True results will be plotted and saved')
 @click.option('--show_plot', type=click.BOOL,
               default=False,
               help='If True plots will be shown to the user')
-@click.option('--save_results', type=click.BOOL,
-              default=False)
 @click.option('--activity_mat_file', type=click.STRING,
               default='')
 @click.option('--bias', type=click.INT,
               default=0,
               help='1 if bias should be included in the model, 0 otherwise')
-@click.option('--do_inference', type=click.BOOL,
-              default=True,
-              help='If false then the script will only plot J and J_est from file')
 @click.option('--error_measurements', type=click.BOOL,
               default=False,
-              help='f true error measurements will be taken for different ppriors')
+              help='if true error measurements will be taken for different ppriors')
 def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity,
-         pprior, plot, show_plot, save_results, activity_mat_file, bias, do_inference, error_measurements):
+         pprior, plot, show_plot, activity_mat_file, bias, error_measurements):
+
+    num_neurons = [int(num) for num in num_neurons.split(',')]
+    time_steps = [int(num) for num in time_steps.split(',')]
+    pprior = [float(num) for num in pprior.split(',')]
 
     N, T, S, J, J_est_lasso, cdf_factor = get_J_S(activity_mat_file, likelihood_function,
                                                   bias, num_neurons, time_steps, sparsity)
 
-    if do_inference:
+    # do the inference
+    J_est_EPs = []
+    if error_measurements:
+        ppriors = [0.1, 0.2, 0.9, 0.5, 0.7, 0.3]
+        measurements = {'r_square': [], 'corr_coef': [], 'zero_matching': [], 'sign_matching': []}
+    else:
+        ppriors = [pprior]
+        measurements = []
 
-        J_est_EPs = []
-        if error_measurements:
-            ppriors = [0.1, 0.2, 0.9, 0.5, 0.7, 0.3]
-            measurements = {'r_square': [], 'corr_coef': [], 'zero_matching': [], 'sign_matching': []}
-        else:
-            ppriors = [pprior]
-            measurements = []
+    for pprior in ppriors:
+        # infere coupling from S
+        J_est_EP = np.empty(J.shape)
+        log_evidences = np.empty(ros.shape[0])
 
-        for pprior in ppriors:
-            # infere coupling from S
-            J_est_EP = np.empty(J.shape)
-            log_evidences = np.empty(ros.shape[0])
+        #prepare inputs for multi processing
+        args_multi = []
+        indices = range(N)
+        inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
+        for input_indices in inputs:
+            args_multi.append((S, sparsity, input_indices, pprior, cdf_factor))
 
-            #prepare inputs for multi processing
-            args_multi = []
-            indices = range(N)
-            inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
-            for input_indices in inputs:
-                args_multi.append((S, sparsity, input_indices, pprior, cdf_factor))
+        results = do_multiprocess(multi_process_EP, args_multi, num_processes)
 
-            results = do_multiprocess(multi_process_EP, args_multi, num_processes)
+        for i, indices in enumerate(inputs):
+            mus = [results[i][j]['mu'] for j in range(len(results[i]))]
+            J_est_EP[:, indices] = np.array(mus).transpose()
 
-            for i, indices in enumerate(inputs):
-                mus = [results[i][j]['mu'] for j in range(len(results[i]))]
-                J_est_EP[:, indices] = np.array(mus).transpose()
+            evidences_tmp = [results[i][j]['log_evidence'] for j in range(len(results[i]))]
+            log_evidences += np.sum(np.array(evidences_tmp), axis=0)
 
-                evidences_tmp = [results[i][j]['log_evidence'] for j in range(len(results[i]))]
-                log_evidences += np.sum(np.array(evidences_tmp), axis=0)
-
-            if len(ppriors) > 1:
-                #calculate different error measurements
-                J_est_EPs.append(J_est_EP)
-                measurements['r_square'].append(r_square(J, J_est_EP))
-                measurements['corr_coef'].append(corr_coef(J, J_est_EP))
-                measurements['zero_matching'].append(zero_matching(J, J_est_EP))
-                measurements['sign_matching'].append(sign_matching(J, J_est_EP))
+        if len(ppriors) > 1:
+            #calculate different error measurements
+            J_est_EPs.append(J_est_EP)
+            measurements['r_square'].append(r_square(J, J_est_EP))
+            measurements['corr_coef'].append(corr_coef(J, J_est_EP))
+            measurements['zero_matching'].append(zero_matching(J, J_est_EP))
+            measurements['sign_matching'].append(sign_matching(J, J_est_EP))
 
     else:
         J_est_EP = []
