@@ -6,28 +6,33 @@ import scipy.io as sio
 import seaborn
 
 
-def save_inference_results_to_file(S, J, bias, sparsity, J_est_EPs, J_est_lasso, likelihood_function, ppriors):
-    N = S.shape[1] - bias
-    T = S.shape[0]
-
-    # create a new directory to save the results and the plot
+def get_dir_name(ppriors, N, T, sparsity, likelihood_function):
     if len(ppriors) == 1:
         dir_name = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
                 + "_pprior_" + str(ppriors[0]).replace('.', '') + "_" + likelihood_function
     else:
         dir_name = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + \
                    str(sparsity).replace(".", "") + '_' + likelihood_function
+
+    # create a new directory to save the results
     if not os.path.exists(dir_name):
         os.makedirs(dir_name)
+    return dir_name
+
+
+def save_inference_results_to_file(dir_name, S, J, bias, J_est_EPs, likelihood_function,
+                                   ppriors, log_evidences, ros, J_est_lasso=[], i=0):
 
     # Save simulation data to file
     if list(J_est_lasso):
-        file_path = os.path.join(dir_name, 'S_J_J_est_lasso_EP')
+        file_path = os.path.join(dir_name, 'S_J_J_est_lasso_EP_' + str(i))
         sio.savemat(file_path, {'S': S, 'J': J, 'J_est_lasso': J_est_lasso,
-                                'J_est_EPs': J_est_EPs, 'ppriors': ppriors})
+                                'J_est_EPs': J_est_EPs, 'ppriors': ppriors, 'ros' : ros,
+                                'log_evidences': log_evidences})
     else:
-        file_path = os.path.join(dir_name, 'S_J_J_est_EP')
-        sio.savemat(file_path, {'S': S, 'J': J, 'J_est_EP': J_est_EPs, 'ppriors': ppriors})
+        file_path = os.path.join(dir_name, 'S_J_J_est_EP_' + str(i))
+        sio.savemat(file_path, {'S': S, 'J': J, 'J_est_EP': J_est_EPs, 'ppriors': ppriors, 'ros': ros,
+                                'log_evidences': log_evidences})
 
     return dir_name
 
