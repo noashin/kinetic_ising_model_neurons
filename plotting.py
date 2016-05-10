@@ -1,12 +1,38 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn
 import os
 
+import numpy as np
+import matplotlib.pyplot as plt
+import scipy.io as sio
+import seaborn
 
-def plot_and_save(measurements, J, J_est_lasso, J_est_EP, ppriors, log_evidences, ros,
-                  plot, show_plot, dir_name):
 
+def save_inference_results_to_file(S, J, bias, sparsity, J_est_EPs, J_est_lasso, likelihood_function, ppriors):
+    N = S.shape[1] - bias
+    T = S.shape[0]
+
+    # create a new directory to save the results and the plot
+    if len(ppriors) == 1:
+        dir_name = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
+                + "_pprior_" + str(ppriors[0]).replace('.', '') + "_" + likelihood_function
+    else:
+        dir_name = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + \
+                   str(sparsity).replace(".", "") + '_' + likelihood_function
+    if not os.path.exists(dir_name):
+        os.makedirs(dir_name)
+
+    # Save simulation data to file
+    if list(J_est_lasso):
+        file_path = os.path.join(dir_name, 'S_J_J_est_lasso_EP')
+        sio.savemat(file_path, {'S': S, 'J': J, 'J_est_lasso': J_est_lasso,
+                                'J_est_EPs': J_est_EPs, 'ppriors': ppriors})
+    else:
+        file_path = os.path.join(dir_name, 'S_J_J_est_EP')
+        sio.savemat(file_path, {'S': S, 'J': J, 'J_est_EP': J_est_EPs, 'ppriors': ppriors})
+
+    return dir_name
+
+def plot_and_save(S, measurements, J, J_est_lasso, J_est_EP, ppriors, log_evidences, ros,
+                  plot, show_plot):
     if plot:
         inference_fig = plot_J_J_est(J, J_est_EP, J_est_lasso, show_plot)
         inference_fig[0].savefig(os.path.join(dir_name, inference_fig[1] + '.png'))
