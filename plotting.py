@@ -4,6 +4,22 @@ import seaborn
 import os
 
 
+def plot_and_save(measurements, J, J_est_lasso, J_est_EP, ppriors, log_evidences, ros,
+                  plot, show_plot, dir_name):
+
+    if plot:
+        inference_fig = plot_J_J_est(J, J_est_EP, J_est_lasso, show_plot)
+        inference_fig[0].savefig(os.path.join(dir_name, inference_fig[1] + '.png'))
+
+        if measurements:
+            measurements_fig = plot_error_measurements(ppriors, measurements, show_plot)
+            measurements_fig[0].savefig(os.path.join(dir_name, measurements_fig[1]))
+
+        if list(log_evidences):
+            log_evidence_fig = plot_log_evidence(ros, log_evidences, show_plot)
+            log_evidence_fig[0].savefig(os.path.join(dir_name, log_evidence_fig[1]))
+
+
 def plot_J_J_est(J, J_est_EP, J_est_lasso, show_plot):
     """This functions plots a scatter plot of the infered couplings (J_est)
     versus the real coupling (J).
@@ -57,7 +73,7 @@ def plot_log_evidence(ros, log_evidences, show_plot):
     if show_plot:
         plt.show()
 
-    return f, 'log_evidences'
+    return f, 'log_evidences.png'
 
 
 def plot_error_measurements(ppriors, measurements, show_plot):
@@ -78,4 +94,4 @@ def plot_error_measurements(ppriors, measurements, show_plot):
     if show_plot:
         plt.show()
 
-    return f, 'error_measurements'
+    return f, 'error_measurements.png'
