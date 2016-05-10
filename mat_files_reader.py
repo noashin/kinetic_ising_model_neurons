@@ -3,6 +3,17 @@ import sys
 import scipy.io as sio
 
 
+def get_J_S_from_mat_file(activity_mat_file):
+    S, J, J_est_lasso = get_activity_from_file(activity_mat_file)
+    N = S.shape[1]
+    T = S.shape[0]
+
+    likelihood_function, ro = get_params_from_file_name(activity_mat_file, likelihood_function)
+    cdf_factor = 1.0 if likelihood_function == 'probit' else 1.6
+
+    return N, T, S, J, J_est_lasso, cdf_factor
+
+
 def get_activity_from_file(mat_file_path):
     ''' Given  .mat file this funciton extract the activity matrix S
     and connectivity matrix J from the file.
