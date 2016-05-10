@@ -1,9 +1,10 @@
 import sys
+import os
 
 import scipy.io as sio
 
 
-def get_J_S_from_mat_file(activity_mat_file):
+def get_J_S_from_mat_file(activity_mat_file, likelihood_function):
     S, J, J_est_lasso = get_activity_from_file(activity_mat_file)
     N = S.shape[1]
     T = S.shape[0]
@@ -42,9 +43,10 @@ def get_activity_from_file(mat_file_path):
     return S, J, J_est_lasso
 
 
-def get_params_from_file_name(mat_file_name, likelihood_function):
+def get_params_from_file_name(mat_file_path, likelihood_function):
 
     try:
+        mat_file_name = os.path.basename(mat_file_path)
         # assuming the type of likelihood function is the last word in the file name,
         # between the last '_' and '.mat', or that it is before 'J_est'
         indices_ = [i for i, ltr in enumerate(mat_file_name) if ltr == '_']
