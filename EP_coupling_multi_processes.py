@@ -11,6 +11,7 @@ import os
 
 from spikes_activity_generator import generate_spikes, spike_and_slab
 from measurements import r_square, corr_coef, zero_matching, sign_matching
+from plotting_saving import plot_and_save, save_inference_results_to_file
 import parameters_update_prior_terms as prior_update
 import parameters_update_likelihood_terms as likelihood_update
 
@@ -239,96 +240,6 @@ def get_params_from_file_name(mat_file, likelihood_function):
     return likelihood_function, ro
 
 
-def plot_results(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_function,
-                 pprior, save_results, log_evidences, measurements, ppriors):
-    N = S.shape[1] - bias
-    T = S.shape[0]
-
-    if len(ppriors) == 1:
-        title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
-                + "_pprior_" + str(ppriors[0]).replace('.', '') + "_" + likelihood_function
-    else:
-        title = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + \
-                str(sparsity).replace(".", "") + '_' + likelihood_function
-
-    if list(J_est_lasso) and list(J_est_EP):
-        f, axarr = plt.subplots(2, sharex=True)
-        axarr[0].plot([J.min(), J.max()], [J.min(), J.max()], 'k')
-        axarr[0].plot(J.flatten(), J_est_EP.flatten(), 'o')
-        axarr[0].set_ylabel('J_est_EP')
-        axarr[0].set_title(title)
-        axarr[1].plot([J.min(), J.max()], [J.min(), J.max()], 'k')
-        axarr[1].plot(J.flatten(), J_est_lasso.flatten() / 2.0, 'o')
-        axarr[1].set_ylabel('J_est_lasso')
-        axarr[1].set_xlabel('J')
-
-    else:
-        f = plt.figure()
-        J_est = J_est_EP if list(J_est_EP) else J_est_lasso
-        ylabel = 'J_est_EP' if list(J_est_EP) else 'J_est_lasso'
-        correction = 1.0 if list(J_est_EP) else 2.0
-        plt.plot([J.min(), J.max()], [J.min(), J.max()], 'k')
-        plt.plot(J.flatten(), J_est.flatten() / correction, 'o')
-        plt.title(title)
-        plt.ylabel(ylabel)
-        plt.xlabel('J')
-    if save_results:
-        f.savefig(os.path.join(title, 'J_vs_J_est.png'))
-
-    plt.show()
-
-    if list(log_evidences):
-        best_ro = ros[np.argmax(log_evidences)]
-        f = plt.figure()
-        plt.plot(ros, log_evidences)
-        plt.xlabel('ro')
-        plt.ylabel('log evidence')
-        plt.title('best ro: ' + str(best_ro))
-        if save_results:
-            f.savefig(os.path.join(title, 'log_evidence.png'))
-    plt.show()
-
-    if measurements:
-        ppriors = np.array(ppriors)
-        indices = np.argsort(ppriors)
-        ppriors = ppriors[indices]
-        f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, sharex='col')
-        ax1.plot(ppriors, np.array(measurements['r_square'])[indices])
-        ax1.set_title('r_square')
-        ax2.plot(ppriors, np.array(measurements['corr_coef'])[indices])
-        ax2.set_title('corr_coef')
-        ax3.plot(ppriors, np.array(measurements['zero_matching'])[indices])
-        ax3.set_title('zero_matching')
-        ax4.plot(ppriors, np.array(measurements['sign_matching'])[indices])
-        ax4.set_title('sign_matching')
-        plt.show()
-        if save_results:
-            f.savefig(os.path.join(title, 'error_measurements.png'))
-
-def save_results_to_file(S, J, bias, sparsity, J_est_EPs, J_est_lasso, likelihood_function, ppriors):
-    N = S.shape[1] - bias
-    T = S.shape[0]
-
-    # create a new directory to save the results and the plot
-    if len(ppriors) == 1:
-        dir_name = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
-                + "_pprior_" + str(ppriors[0]).replace('.', '') + "_" + likelihood_function
-    else:
-        dir_name = 'N_' + str(N) + '_T_' + str(T) + '_ro_' + \
-                   str(sparsity).replace(".", "") + '_' +likelihood_function
-    if not os.path.exists(dir_name):
-        os.makedirs(dir_name)
-
-    # Save simulation data to file
-    if list(J_est_lasso):
-        file_path = os.path.join(dir_name, 'S_J_J_est_lasso_EP')
-        sio.savemat(file_path, {'S': S, 'J': J, 'J_est_lasso': J_est_lasso,
-                                'J_est_EPs': J_est_EPs, 'ppriors': ppriors})
-    else:
-        file_path = os.path.join(dir_name, 'S_J_J_est_EP')
-        sio.savemat(file_path, {'S': S, 'J': J, 'J_est_EP': J_est_EPs, 'ppriors': ppriors})
-
-
 @click.command()
 @click.option('--num_neurons', type=click.INT,
               default=10,
@@ -348,7 +259,11 @@ def save_results_to_file(S, J, bias, sparsity, J_est_EPs, J_est_lasso, likelihoo
               default=0.3,
               help='Set pprior for the EP.')
 @click.option('--plot', type=click.BOOL,
-              default=False)
+              default=False,
+              help='If True results will be plotted and saved')
+@click.option('--show_plot', type=click.BOOL,
+              default=False,
+              help='If True plots will be shown to the user')
 @click.option('--save_results', type=click.BOOL,
               default=False)
 @click.option('--activity_mat_file', type=click.STRING,
@@ -361,9 +276,9 @@ def save_results_to_file(S, J, bias, sparsity, J_est_EPs, J_est_lasso, likelihoo
               help='If false then the script will only plot J and J_est from file')
 @click.option('--error_measurements', type=click.BOOL,
               default=False,
-              help='f true error measurements will be taken for different ppriorI')
+              help='f true error measurements will be taken for different ppriors')
 def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity,
-         pprior, plot, save_results, activity_mat_file, bias, do_inference, error_measurements):
+         pprior, plot, show_plot, save_results, activity_mat_file, bias, do_inference, error_measurements):
 
     # Get the spiking activity
     if activity_mat_file:
@@ -441,12 +356,11 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity,
         log_evidences = []
         ppriors = []
 
-    if save_results:
-        save_results_to_file(S, J, bias, sparsity, J_est_EPs, J_est_lasso, likelihood_function, ppriors)
-
-    if plot:
-        plot_results(S, J, bias, sparsity, J_est_EP, J_est_lasso, likelihood_function,
-                     pprior, save_results, log_evidences, measurements, ppriors)
+    # save the inference results
+    dir_name = save_inference_results_to_file(S, J, bias, sparsity, J_est_EPs,
+                                              J_est_lasso, likelihood_function, ppriors)
+    # plotting
+    plot_and_save(measurements, J, J_est_lasso, J_est_EP, ppriors, log_evidences, ros, plot, show_plot, dir_name)
 
 
 if __name__ == "__main__":
