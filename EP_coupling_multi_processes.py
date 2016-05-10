@@ -184,6 +184,43 @@ def do_multiprocess(function, function_args, num_processes):
     return results_list
 
 
+def get_J_S(activity_mat_file, likelihood_function, bias, num_neurons, time_steps, sparsity):
+    # Get the spiking activity
+    if activity_mat_file:
+        S, J, J_est_lasso = get_activity_from_file(activity_mat_file)
+        N = S.shape[1]
+        T = S.shape[0]
+
+        likelihood_function, ro = get_params_from_file_name(activity_mat_file, likelihood_function)
+
+    else:
+
+        if bias != 0 and bias != 1:
+            raise ValueError('bias should be either 1 or 0')
+
+        N = num_neurons
+        T = time_steps
+
+        # Add a column for bias if it is part of the model
+        J = spike_and_slab(sparsity, N, bias)
+        S0 = - np.ones(N + bias)
+        J_est_lasso = []
+
+        if likelihood_function == 'probit':
+            energy_function = stats.norm.cdf
+        elif likelihood_function == 'logistic':
+            energy_function = expit
+        else:
+            raise ValueError('Unknown likelihood function')
+
+        S = generate_spikes(N, T, S0, J, energy_function, bias)
+
+    cdf_factor = 1.0 if likelihood_function == 'probit' else 1.6
+
+    return N, T, S, J, J_est_lasso, cdf_factor
+
+
+
 @click.command()
 @click.option('--num_neurons', type=click.INT,
               default=10,
@@ -224,37 +261,8 @@ def do_multiprocess(function, function_args, num_processes):
 def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity,
          pprior, plot, show_plot, save_results, activity_mat_file, bias, do_inference, error_measurements):
 
-    # Get the spiking activity
-    if activity_mat_file:
-        S, J, J_est_lasso = get_activity_from_file(activity_mat_file)
-        N = S.shape[1]
-        T = S.shape[0]
-
-        likelihood_function, ro = get_params_from_file_name(activity_mat_file, likelihood_function)
-
-    else:
-
-        if bias != 0 and bias != 1:
-            raise ValueError('bias should be either 1 or 0')
-
-        N = num_neurons
-        T = time_steps
-
-        # Add a column for bias if it is part of the model
-        J = spike_and_slab(sparsity, N, bias)
-        S0 = - np.ones(N + bias)
-        J_est_lasso = []
-
-        if likelihood_function == 'probit':
-            energy_function = stats.norm.cdf
-        elif likelihood_function == 'logistic':
-            energy_function = expit
-        else:
-            raise ValueError('Unknown likelihood function')
-
-        S = generate_spikes(N, T, S0, J, energy_function, bias)
-
-    cdf_factor = 1.0 if likelihood_function == 'probit' else 1.6
+    N, T, S, J, J_est_lasso, cdf_factor = get_J_S(activity_mat_file, likelihood_function,
+                                                  bias, num_neurons, time_steps, sparsity)
 
     if do_inference:
 
