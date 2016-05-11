@@ -34,8 +34,7 @@ def calc_log_evidence(a, b, nu, s, mu, m, v, N, pprior):
     log_C = np.sum(np.log(pprior * a + (1 - pprior) * b))
 
     second_term = np.log(2.0 * np.pi) * N / 2.0 + np.sum(0.5 * np.log(nu)) + B / 2 + np.sum(np.log(s))
-    second_vec = np.repeat(second_term, len(ros))
-    log_evidence = log_C + second_vec
+    log_evidence = log_C + second_term
 
     return log_evidence
 
@@ -287,7 +286,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
                         J_est_EPs.append(results[0])
                         log_evidences.append(results[1])
                     save_inference_results_to_file(dir_name, S, J, bias, J_est_EPs, likelihood_function,
-                                                   ppriors, log_evidences, ros, [], i)
+                                                   ppriors, log_evidences, [], i)
 
 if __name__ == "__main__":
     main()
