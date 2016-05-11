@@ -11,10 +11,7 @@ import parameters_update_prior_terms as prior_update
 import parameters_update_likelihood_terms as likelihood_update
 
 
-ros = np.arange(0.01, 1.0, 0.01)
-
-
-def calc_log_evidence(a, b, nu, s, mu, m, v, N):
+def calc_log_evidence(a, b, nu, s, mu, m, v, N, pprior):
     '''This function calculate the log evidence based on the infered model
 
     :param a:
@@ -34,7 +31,7 @@ def calc_log_evidence(a, b, nu, s, mu, m, v, N):
 
     B = np.dot(mu, np.multiply(mu, nu / 1)) - np.sum(np.multiply(v_learnt**(-1), m_learnt**2))
 
-    log_C = [np.sum(np.log(ro * a + (1-ro) * b)) for ro in ros]
+    log_C = np.sum(np.log(pprior * a + (1 - pprior) * b))
 
     second_term = np.log(2.0 * np.pi) * N / 2.0 + np.sum(0.5 * np.log(nu)) + B / 2 + np.sum(np.log(s))
     second_vec = np.repeat(second_term, len(ros))
@@ -156,7 +153,7 @@ def EP(activity, ro, n, pprior, cdf_factor):
 
         itr = itr + 1
 
-    log_evidence = calc_log_evidence(a, b, nu, s, mu, m, v, N)
+    log_evidence = calc_log_evidence(a, b, nu, s, mu, m, v, N, pprior)
     return {'mu': mu, 'log_evidence': log_evidence}
 
 
@@ -211,7 +208,7 @@ def generate_J_S(likelihood_function, bias, num_neurons, time_steps, sparsity):
 def do_inference(S, J, N, num_processes, pprior, sparsity,cdf_factor):
     # infere coupling from S
     J_est_EP = np.empty(J.shape)
-    log_evidences = np.empty(ros.shape[0])
+    log_evidence = 0.0
 
     #prepare inputs for multi processing
     args_multi = []
@@ -227,9 +224,9 @@ def do_inference(S, J, N, num_processes, pprior, sparsity,cdf_factor):
         J_est_EP[:, indices] = np.array(mus).transpose()
 
         evidences_tmp = [results[i][j]['log_evidence'] for j in range(len(results[i]))]
-        log_evidences += np.sum(np.array(evidences_tmp), axis=0)
+        log_evidence += np.sum(np.array(evidences_tmp), axis=0)
 
-    return J_est_EP, log_evidences
+    return J_est_EP, log_evidence
 
 @click.command()
 @click.option('--num_neurons',
