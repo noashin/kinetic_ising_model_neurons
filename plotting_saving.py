@@ -31,7 +31,7 @@ def save_inference_results_to_file(dir_name, S, J, bias, J_est_EPs, likelihood_f
                                 'log_evidences': log_evidences})
     else:
         file_path = os.path.join(dir_name, 'S_J_J_est_EP_' + str(i))
-        sio.savemat(file_path, {'S': S, 'J': J, 'J_est_EP': J_est_EPs, 'ppriors': ppriors, 'ros': ros,
+        sio.savemat(file_path, {'S': S, 'J': J, 'J_est_EPs': J_est_EPs, 'ppriors': ppriors, 'ros': ros,
                                 'log_evidences': log_evidences})
 
     return dir_name
