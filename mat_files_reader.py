@@ -5,14 +5,14 @@ import scipy.io as sio
 
 
 def get_J_S_from_mat_file(activity_mat_file, likelihood_function):
-    S, J, J_est_lasso = get_activity_from_file(activity_mat_file)
+    S, J, J_est_lasso, J_est_EPs = get_activity_from_file(activity_mat_file)
     N = S.shape[1]
     T = S.shape[0]
 
     likelihood_function, ro = get_params_from_file_name(activity_mat_file, likelihood_function)
     cdf_factor = 1.0 if likelihood_function == 'probit' else 1.6
 
-    return N, T, S, J, J_est_lasso, cdf_factor
+    return N, T, S, J, J_est_lasso, J_est_EPs, cdf_factor
 
 
 def get_activity_from_file(mat_file_path):
@@ -28,6 +28,7 @@ def get_activity_from_file(mat_file_path):
         mat_cont = sio.loadmat(mat_file_path)
         J = mat_cont['J']
         J_est_lasso = mat_cont['J_est_1'] if 'J_est_1' in mat_cont.keys() else []
+        J_est_EPs = mat_cont['J_est_EPs'] if 'J_est_EPs' in mat_cont.keys() else []
         # The activity genarated by the realistic model is saved as unit8 and should be converted to float.
         S = mat_cont['S'].astype(float)
         if 'realistic' in mat_file_path:
@@ -40,7 +41,7 @@ def get_activity_from_file(mat_file_path):
     except KeyError:
         print 'mat file does not contain S or J '
         sys.exit(1)
-    return S, J, J_est_lasso
+    return S, J, J_est_lasso, J_est_EPs
 
 
 def get_params_from_file_name(mat_file_path, likelihood_function):

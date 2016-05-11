@@ -263,7 +263,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
 
     if activity_mat_file:
         # If only
-        N, T, S, J, J_est_lasso, cdf_factor = get_J_S_from_mat_file(activity_mat_file, likelihood_function)
+        N, T, S, J, J_est_lasso, _, cdf_factor = get_J_S_from_mat_file(activity_mat_file, likelihood_function)
         J_est_EPs = []
         log_evidences = []
         for pprior in ppriors:
