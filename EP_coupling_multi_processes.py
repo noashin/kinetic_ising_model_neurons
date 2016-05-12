@@ -29,14 +29,15 @@ def calc_log_evidence(a, b, nu, s, mu, m, v, N, pprior):
     m_learnt = m[1:, :]
     s = s[~np.isnan(s)]
 
-    B = np.dot(mu, np.multiply(mu, nu / 1)) - np.sum(np.multiply(v_learnt**(-1), m_learnt**2))
+    B = np.dot(mu, np.multiply(mu, nu / 1.0)) - np.sum(np.multiply(v_learnt**(-1.0), m_learnt**2.0))
 
-    log_C = np.sum(np.log(pprior * a + (1 - pprior) * b))
+    log_C = np.sum(np.log(pprior * a + (1.0 - pprior) * b))
 
     second_term = np.log(2.0 * np.pi) * N / 2.0 + np.sum(0.5 * np.log(nu)) + B / 2 + np.sum(np.log(s))
     log_evidence = log_C + second_term
+    #log_evidence = second_term
 
-    return log_evidence
+    return log_evidence if np.isfinite(log_evidence) else 0.0
 
 
 def update_likelihood_terms(mu, nu, v, m, s, activity, n, cdf_factor):
