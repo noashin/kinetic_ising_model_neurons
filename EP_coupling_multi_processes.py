@@ -271,7 +271,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
 
         dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function)
         save_inference_results_to_file(dir_name, S, J, bias, J_est_EPs, likelihood_function,
-                                   ppriors, log_evidences, ros, J_est_lasso)
+                                   ppriors, log_evidences, J_est_lasso)
 
     else:
         num_neurons = [int(num) for num in num_neurons.split(',')]
