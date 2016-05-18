@@ -189,6 +189,7 @@ def generate_J_S(likelihood_function, bias, num_neurons, time_steps, sparsity):
 
     # Add a column for bias if it is part of the model
     J = spike_and_slab(sparsity, N, bias)
+    J = J + 0.0
     S0 = - np.ones(N + bias)
 
     if likelihood_function == 'probit':
