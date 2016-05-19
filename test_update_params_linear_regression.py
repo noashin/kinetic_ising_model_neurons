@@ -88,3 +88,65 @@ def test_calc_b():
                    np.array([3.0, 15.0, 8.0]) * logit(np.array([-3.0, -3.0, -4.0]))
 
     np.testing.assert_array_almost_equal(res, expected_res)
+
+
+def test_calc_V():
+    from update_params_linear_regression import calc_V
+
+    sigma0 = 2.0
+    V_2 = np.diag(np.array([1.0, 2.0, 4.0]))
+    XT_X = np.array([[1.0, 2.0, 2.0], [1.0, 2.0, 1.0], [4.0, 4.0, 4.0]])
+
+    res = calc_V(V_2, sigma0, XT_X)
+    expected_res = np.array([[1.18518519, -0.14814815, -0.44444444],
+                            [-0.07407407,  1.25925926, -0.22222222],
+                            [-0.88888889, -0.88888889,  1.33333333]])
+
+    np.testing.assert_array_almost_equal(res, expected_res)
+
+
+def test_calc_m():
+    from update_params_linear_regression import calc_m
+
+    V_2 = np.array([[1.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 1.0]])
+    V = np.array([[1.0, 1.0, 0.0], [0.0, 2.0, 1.0], [2.0, 0.0, 1.0]])
+    X = np.array([[1.0, 2.0, 1.0], [2.0, 3.0, 1.0]])
+    y = np.array([1.0, -1.0])
+    m_2 = np.array([1.0, 4.0, 3.0])
+    sigma0 = 0.5
+
+    res = calc_m(V, V_2, m_2, sigma0, X, y)
+    expected_res = np.array([-5.0, -1.0, -3.0])
+
+    np.testing.assert_array_equal(res, expected_res)
+
+
+def test_update_v_1():
+    from update_params_linear_regression import update_v_1
+
+    v_2 = np.array([1.0, 2.0, 4.0])
+    V = np.array([[1.18518519, -0.14814815, -0.44444444],
+                [-0.07407407,  1.25925926, -0.22222222],
+                [-0.88888889, -0.88888889,  1.33333333]])
+
+    res = update_v_1(v_2, V)
+    expected_res = np.array([-6.39999986,  3.40000001,  1.99999999])
+
+    np.testing.assert_array_almost_equal(res, expected_res)
+
+
+def tes_update_m_1():
+    from update_params_linear_regression import update_m_1
+
+    v_2 = np.array([1.0, 2.0, 1.0])
+    V = np.array([[1.0, 1.0, 0.0], [0.0, 2.0, 1.0], [2.0, 0.0, 1.0]])
+    X = np.array([[1.0, 2.0, 1.0], [2.0, 3.0, 1.0]])
+    y = np.array([1.0, -1.0])
+    m_2 = np.array([1.0, 4.0, 3.0])
+    sigma0 = 0.5
+    v_1_new = np.array([-1.0 / 6.0, 2.0, 1.0 / 3.0])
+
+    res = update_m_1(V, v_2, m_2, sigma0, X, y, v_1_new)
+    expected_res = np.array([1.0, - 5.0, - 2.0])
+
+    np.testing.assert_array_equal(res, expected_res)

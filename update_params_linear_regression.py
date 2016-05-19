@@ -34,3 +34,34 @@ def calc_b(p_2_new, p_3, m_1, v_1, v_s):
     tmp_2 = logit(-p_2_new - p_3) * (m_1 ** 2 * np.sqrt(v_1) - 1.0 / v_1)
 
     return tmp_1 + tmp_2
+
+
+def calc_V(V_2, sigma0, XT_X):
+    V_2_inv = np.linalg.inv(V_2)
+    tmp_mat = V_2_inv + sigma0 ** (-2) * XT_X
+
+    return np.linalg.inv(tmp_mat)
+
+
+def calc_m(V, V_2, m_2, sigma0, X, y):
+    l_mat = np.dot(np.linalg.inv(V_2), m_2)
+    r_mat = sigma0 ** (-2) * np.dot(X.transpose(), y)
+
+    return np.dot(V, l_mat + r_mat)
+
+
+def update_v_1(v_2, V):
+    v_new = np.diag(V)
+
+    return 1.0 / (1.0 / v_new - 1.0 / v_2)
+
+
+def update_m_1(V, v_2, m_2, sigma0, X, y, v_1_new):
+    m_new = calc_m(V, np.diag(v_2), m_2, sigma0, X, y)
+    v_new = np.diag(V)
+
+    m_v = np.multiply(m_new, 1.0 / v_new)
+    m_v_2 = np.multiply(m_2, 1.0 / v_2)
+
+    return np.multiply(m_v - m_v_2, v_1_new)
+
