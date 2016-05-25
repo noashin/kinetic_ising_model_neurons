@@ -1,8 +1,20 @@
 import numpy as np
 from scipy import stats
 
+def exp_cosh(H):
+    betta = 1.0
 
-def kinetic_ising_model(S, J, energy_function):
+    return 0.5 * np.exp(betta * H)/np.cosh(betta * H)
+
+
+def gaussian(H):
+    a = 1
+    cov = np.diag(np.repeat(a, H.shape[0]))
+    return np.random.multivariate_normal(H, cov)
+
+
+
+def kinetic_ising_model(S, J, energy_function, betta):
     """ Returns probabilities of S[t+1,n] being one.
 
     :param S: numpy.ndarray (T,N)
@@ -16,6 +28,10 @@ def kinetic_ising_model(S, J, energy_function):
 
     # compute fields
     H = compute_fields(S, J)
+    # If a string was passed as the energy function use the function that is mapped to it
+    string_to_func = {'exp_cosh': exp_cosh, 'gaussian': gaussian}
+    if energy_function in string_to_func.keys():
+        energy_function = string_to_func[energy_function]
     # compute probabilities
     p = energy_function(H)
     # return
@@ -54,7 +70,7 @@ def spike_and_slab(ro, N, bias):
     return gamma * normal_dist
 
 
-def generate_spikes(N, T, S0, J, energy_function, bias, no_spike = -1):
+def generate_spikes(N, T, S0, J, energy_function, bias, no_spike=-1, betta=1):
     """ Generates spike data according to kinetic Ising model
 
     :param J: numpy.ndarray (N, N)
@@ -84,12 +100,11 @@ def generate_spikes(N, T, S0, J, energy_function, bias, no_spike = -1):
     # Iterate through all time points
     for i in range(1, T):
         # Compute probabilities of neuron firing
-        p = kinetic_ising_model(np.array([S[i - 1]]), J, energy_function)
+        p = kinetic_ising_model(np.array([S[i - 1]]), J, energy_function, betta)
         # Check if spike or not
         if no_spike == -1:
             S[i, :N] = 2 * (X[i - 1] < p) - 1
         else:
             S[i, :N] = 2 * (X[i - 1] < p) / 2.0
-        #S[i, :] = 2*(X[i-1] + np.dot(np.array(S[i-1, :]), J) >= 0) - 1
 
     return S
