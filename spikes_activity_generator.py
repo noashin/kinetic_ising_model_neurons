@@ -9,8 +9,9 @@ def exp_cosh(H):
 
 def gaussian(H):
     a = 1
-    cov = np.diag(np.repeat(a, H.shape[0]))
-    return np.random.multivariate_normal(H, cov)
+
+    cov = np.diag(np.repeat(a, H.shape[1]))
+    return np.random.multivariate_normal(H[0], cov)
 
 
 

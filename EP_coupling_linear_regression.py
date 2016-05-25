@@ -38,10 +38,11 @@ def EP(activity, ro, n, v_s, sigma0):
     y = activity[1:, n]
 
     itr = 0
-    max_itr = 300
+    max_itr = 100000
     convergence = False
 
     while not convergence and itr < max_itr:
+        import ipdb; ipdb.set_trace()
         p_2_new = update_params.update_p_2(v_1, v_s, m_1)
         a = update_params.calc_a(p_2_new, p_3, m_1, v_1, v_s)
         b = update_params.calc_b(p_2_new, p_3, m_1, v_1, v_s)
@@ -58,8 +59,8 @@ def EP(activity, ro, n, v_s, sigma0):
         v_1_new = update_params.update_v_1(v_2, V)
         m_1_new = update_params.update_m_1(V, v_2, m_2, sigma0, X, y, v_1_new)
 
-        maxdiff = np.max(np.abs(m_2_new - m_2))
-        convergence = maxdiff < 1e-5
+        maxdiff = np.max(np.abs(np.multiply(m_2_new, 1.0 / m_2)))
+        convergence = maxdiff < 1e-1
 
         m_1 = m_1_new
         v_1 = v_1_new
@@ -67,9 +68,11 @@ def EP(activity, ro, n, v_s, sigma0):
         p_2 = p_2_new
         v_2 = v_2_new
 
+
         itr = itr + 1
 
-    log_evidence =calc_log_evidence()
+    print itr
+    log_evidence = calc_log_evidence()
     return {'mu': m_2, 'log_evidence': log_evidence}
 
 
@@ -111,7 +114,7 @@ def generate_J_S(likelihood_function, bias, num_neurons, time_steps, sparsity):
     if likelihood_function != 'gaussian' and likelihood_function != 'exp_cosh':
         raise ValueError('Unknown likelihood function')
 
-    S = generate_spikes(N, T, S0, J, energy_function, bias)
+    S = generate_spikes(N, T, S0, J, likelihood_function, bias)
 
     cdf_factor = 1.0 if likelihood_function == 'probit' else 1.6
 
@@ -151,7 +154,7 @@ def do_inference(S, J, N, num_processes, pprior, sparsity,cdf_factor):
 @click.option('--num_processes', type=click.INT,
               default=1)
 @click.option('--likelihood_function', type=click.STRING,
-              default='probit',
+              default='exp_cosh',
               help='Should be either probit or logistic')
 @click.option('--sparsity', type=click.FLOAT,
               default=0.3,
