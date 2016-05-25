@@ -35,7 +35,6 @@ def calc_log_evidence(a, b, nu, s, mu, m, v, N, pprior):
 
     second_term = np.log(2.0 * np.pi) * N / 2.0 + np.sum(0.5 * np.log(nu)) + B / 2 + np.sum(np.log(s))
     log_evidence = log_C + second_term
-    #log_evidence = second_term
 
     return log_evidence if np.isfinite(log_evidence) else 0.0
 
@@ -60,7 +59,7 @@ def update_likelihood_terms(mu, nu, v, m, s, activity, n, cdf_factor):
             continue
 
         x_i = activity[i, n] * activity[i - 1, :]
-        #x_i = activity[i]
+
         mu_old = likelihood_update.calc_mu_old(mu, nu_old, v[i, :], m[i, :])
         z = likelihood_update.calc_z(x_i, mu_old, nu_old)
         alpha_i = likelihood_update.calc_alpha_i(x_i, nu_old, z, cdf_factor)
@@ -189,7 +188,7 @@ def generate_J_S(likelihood_function, bias, num_neurons, time_steps, sparsity):
 
     # Add a column for bias if it is part of the model
     J = spike_and_slab(sparsity, N, bias)
-    J = J + 0.0
+    J += 0.0
     S0 = - np.ones(N + bias)
 
     if likelihood_function == 'probit':
@@ -259,8 +258,8 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
 
     ppriors = [float(num) for num in pprior.split(',')]
 
+    # If a file containing S an J is supplied the read it
     if activity_mat_file:
-        # If only
         N, T, S, J, J_est_lasso, _, cdf_factor = get_J_S_from_mat_file(activity_mat_file, likelihood_function)
         J_est_EPs = []
         log_evidences = []
@@ -273,6 +272,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
         save_inference_results_to_file(dir_name, S, J, bias, J_est_EPs, likelihood_function,
                                    ppriors, log_evidences, J_est_lasso)
 
+    # If not generate nes S and J
     else:
         num_neurons = [int(num) for num in num_neurons.split(',')]
         time_steps = [int(num) for num in time_steps.split(',')]
