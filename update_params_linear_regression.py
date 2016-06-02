@@ -56,6 +56,6 @@ def update_v_1(v_2, V):
     return 1.0 / (1.0 / v_new - 1.0 / v_2)
 
 
-def update_m_1(m, v, m_2, v_2):
-    return m / v - m_2 / v_2
+def update_m_1(m, v, m_2, v_2, v_1):
+    return v_1 * (m / v - m_2 / v_2)
 
