@@ -276,11 +276,11 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
     else:
         num_neurons = [int(num) for num in num_neurons.split(',')]
         time_steps = [int(num) for num in time_steps.split(',')]
-        for N in num_neurons:
-            for T in time_steps:
-                dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function)
-                S, J, cdf_factor = generate_J_S(likelihood_function, bias, N, T, sparsity)
-                for i in range(num_trials):
+        for i in range(num_trials):
+            for N in num_neurons:
+                for T in time_steps:
+                    dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function)
+                    S, J, cdf_factor = generate_J_S(likelihood_function, bias, N, T, sparsity)
                     J_est_EPs = []
                     log_evidences = []
                     for pprior in ppriors:
