@@ -14,16 +14,6 @@ import parameters_update_likelihood_terms as likelihood_update
 def calc_log_evidence(a, b, nu, s, mu, m, v, N, pprior):
     '''This function calculate the log evidence based on the infered model
 
-    :param a:
-    :param b:
-    :param nu:
-    :param s:
-    :param mu:
-    :param m:
-    :param v:
-    :param ro:
-    :param N:
-    :return:
     '''
     v_learnt = v[1:, :]
     m_learnt = m[1:, :]
@@ -40,16 +30,9 @@ def calc_log_evidence(a, b, nu, s, mu, m, v, N, pprior):
 
 
 def update_likelihood_terms(mu, nu, v, m, s, activity, n, cdf_factor):
-    '''
+    """ This function exectues the update rules for the likelihood function
 
-    :param mu:
-    :param nu:
-    :param v:
-    :param m:
-    :param s:
-    :param activity:
-    :return:
-    '''
+    """
     T = activity.shape[0]
     N = activity.shape[1]
     for i in range(1, T):
@@ -75,16 +58,21 @@ def update_likelihood_terms(mu, nu, v, m, s, activity, n, cdf_factor):
     return mu, nu, v, m, s
 
 
-def EP(activity, ro, n, pprior, cdf_factor):
-    '''
+def EP(activity, n, pprior, cdf_factor):
+    """ This function perfoems EP and returns the infered couplings.
 
-    :param S: Activity matrix [T, N]
+    :param activity: The network's activity
+    :param ro: the assumed sparsity of the couplins
+    :param n:
+    :param pprior:
+    :param cdf_factor:
     :return:
-    '''
+    """
+
     T = activity.shape[0]
     N = activity.shape[1]
 
-    # Initivalization
+    # Initivalisation
     sigma0 = 0.0
     sigma1 = 1.0
 
@@ -124,7 +112,7 @@ def EP(activity, ro, n, pprior, cdf_factor):
 
         G0 = prior_update.calc_G(mu_old, nu_old, sigma0)
         G1 = prior_update.calc_G(mu_old, nu_old, sigma1)
-        #p_old = prior_update.calc_p_old(p_, a, b)
+
         p_old = pprior
         z = prior_update.calc_Z(p_old, G1, G0)
         c1 = prior_update.calc_c1(z, p_old, G1, mu_old, nu_old, sigma1, G0, sigma0)
@@ -156,8 +144,8 @@ def EP(activity, ro, n, pprior, cdf_factor):
     return {'mu': mu, 'log_evidence': log_evidence}
 
 
-def EP_single_neuron(activity, ro, ns, pprior, cdf_factor):
-    results = [EP(activity, ro, n, pprior, cdf_factor) for n in ns]
+def EP_single_neuron(activity, ns, pprior, cdf_factor):
+    results = [EP(activity, n, pprior, cdf_factor) for n in ns]
     return results
 
 
@@ -205,17 +193,17 @@ def generate_J_S(likelihood_function, bias, num_neurons, time_steps, sparsity):
     return S, J, cdf_factor
 
 
-def do_inference(S, J, N, num_processes, pprior, sparsity,cdf_factor):
+def do_inference(S, J, N, num_processes, pprior,cdf_factor):
     # infere coupling from S
     J_est_EP = np.empty(J.shape)
     log_evidence = 0.0
 
-    #prepare inputs for multi processing
+    # prepare inputs for multi processing
     args_multi = []
     indices = range(N)
     inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
     for input_indices in inputs:
-        args_multi.append((S, sparsity, input_indices, pprior, cdf_factor))
+        args_multi.append((S, input_indices, pprior, cdf_factor))
 
     results = do_multiprocess(multi_process_EP, args_multi, num_processes)
 
@@ -227,6 +215,7 @@ def do_inference(S, J, N, num_processes, pprior, sparsity,cdf_factor):
         log_evidence += np.sum(np.array(evidences_tmp), axis=0)
 
     return J_est_EP, log_evidence
+
 
 @click.command()
 @click.option('--num_neurons',
@@ -264,7 +253,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
         J_est_EPs = []
         log_evidences = []
         for pprior in ppriors:
-            results = do_inference(S, J, N, num_processes, pprior, sparsity,cdf_factor)
+            results = do_inference(S, J, N, num_processes, pprior, cdf_factor)
             J_est_EPs.append(results[0])
             log_evidences.append(results[1])
 
@@ -272,7 +261,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
         save_inference_results_to_file(dir_name, S, J, bias, J_est_EPs, likelihood_function,
                                    ppriors, log_evidences, J_est_lasso)
 
-    # If not generate nes S and J
+    # If not generate S and J
     else:
         num_neurons = [int(num) for num in num_neurons.split(',')]
         time_steps = [int(num) for num in time_steps.split(',')]
@@ -284,7 +273,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
                     J_est_EPs = []
                     log_evidences = []
                     for pprior in ppriors:
-                        results = do_inference(S, J, N, num_processes, pprior, sparsity,cdf_factor)
+                        results = do_inference(S, J, N, num_processes, pprior, cdf_factor)
                         J_est_EPs.append(results[0])
                         log_evidences.append(results[1])
                     save_inference_results_to_file(dir_name, S, J, bias, J_est_EPs, likelihood_function,
