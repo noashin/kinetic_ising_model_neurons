@@ -1,10 +1,11 @@
 import numpy as np
 from scipy import stats
+from scipy.special import expit
 
 def exp_cosh(H):
-    betta = 1.0
+    beta = 0.4
 
-    return 0.5 * np.exp(betta * H)/np.cosh(betta * H)
+    return 0.5 * np.exp(beta * H)/np.cosh(beta * H)
 
 
 def gaussian(H):
@@ -15,7 +16,7 @@ def gaussian(H):
 
 
 
-def kinetic_ising_model(S, J, energy_function, betta):
+def kinetic_ising_model(S, J, energy_function):
     """ Returns probabilities of S[t+1,n] being one.
 
     :param S: numpy.ndarray (T,N)
@@ -30,7 +31,7 @@ def kinetic_ising_model(S, J, energy_function, betta):
     # compute fields
     H = compute_fields(S, J)
     # If a string was passed as the energy function use the function that is mapped to it
-    string_to_func = {'exp_cosh': exp_cosh, 'gaussian': gaussian}
+    string_to_func = {'exp_cosh': exp_cosh, 'gaussian': gaussian, 'logistic': expit}
     if energy_function in string_to_func.keys():
         energy_function = string_to_func[energy_function]
     # compute probabilities
@@ -56,7 +57,7 @@ def compute_fields(S, J):
     return H
 
 
-def spike_and_slab(ro, N, bias):
+def spike_and_slab(ro, N, bias, v_s = 1.0):
     ''' This function generate spike and priors
 
     :param ro: sparsity
@@ -66,12 +67,12 @@ def spike_and_slab(ro, N, bias):
     '''
 
     gamma = stats.bernoulli.rvs(p=ro, size=(N + bias, N))
-    normal_dist = np.random.randn(N + bias, N)
+    normal_dist = np.random.normal(0.0, v_s, (N + bias, N))
 
     return gamma * normal_dist
 
 
-def generate_spikes(N, T, S0, J, energy_function, bias, no_spike=-1, betta=1):
+def generate_spikes(N, T, S0, J, energy_function, bias, no_spike=-1):
     """ Generates spike data according to kinetic Ising model
 
     :param J: numpy.ndarray (N, N)
@@ -101,7 +102,7 @@ def generate_spikes(N, T, S0, J, energy_function, bias, no_spike=-1, betta=1):
     # Iterate through all time points
     for i in range(1, T):
         # Compute probabilities of neuron firing
-        p = kinetic_ising_model(np.array([S[i - 1]]), J, energy_function, betta)
+        p = kinetic_ising_model(np.array([S[i - 1]]), J, energy_function)
         # Check if spike or not
         if no_spike == -1:
             S[i, :N] = 2 * (X[i - 1] < p) - 1
