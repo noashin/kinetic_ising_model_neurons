@@ -4,80 +4,80 @@ import click
 
 from spikes_activity_generator import generate_spikes, spike_and_slab
 from plotting_saving import save_inference_results_to_file, get_dir_name
-from mat_files_reader import get_J_S_from_mat_file
 import update_params_linear_regression as update_params
 
+v_inf = 1000.0
 
-v_inf = 100.0
+
+def logistic(x):
+    return 1.0 / (1.0 + np.exp(-x))
 
 
-def calc_log_evidence():
-    # TODO:
-    return 0.0
+def inv_logistic(x):
+    return np.log(1.0 / (1.0 - x))
 
 
 def EP(activity, ro, n, v_s, sigma0):
-    '''
+    """Performs EP and returns the approximated couplings
 
-    :param S: Activity matrix [T, N]
-    :return:
-    '''
-    T = activity.shape[0]
+    :param activity: Network's activity
+    :param ro: sparsity of the couplings
+    :param n: index of the neuron being concidered
+    :param v_s: the variance of the "slab" part of the network
+    :param sigma0: assumed variance of the likelihood
+    :return: The approximated couplings for neuron n
+    """
+
     N = activity.shape[1]
 
     # Initivalization
     v_s = v_s * np.ones(N)
     p_3 = update_params.update_p_3(ro, N)
-    v_2_new = ro * v_s
 
     p_2 = m_1 = m_2 = np.zeros(N)
-    v_2 = v_1 = np.inf * np.ones(N)
+    v_1 = np.inf * np.ones(N)
+    v_2 = ro * v_s
 
-    X = activity[1:, :]
-    XT_X = np.dot(X.T, X)
+    # pre calculate constant matrices and vectors
+    X = activity[:-1, :]
     y = activity[1:, n]
 
+    XT_X = np.dot(X.T, X)
+    XT_y = np.dot(X.T, y)
+
     itr = 0
-    max_itr = 100000
+    max_itr = 10000
     convergence = False
 
+    # Repeat the updates rules until convergence
     while not convergence and itr < max_itr:
-        import ipdb; ipdb.set_trace()
-        p_2_new = update_params.update_p_2(v_1, v_s, m_1)
-        a = update_params.calc_a(p_2_new, p_3, m_1, v_1, v_s)
-        b = update_params.calc_b(p_2_new, p_3, m_1, v_1, v_s)
-        if itr > 0:
-            v_2_new = update_params.update_v_2(a, b, v_1)
-
-        # avoid negative values in v_2_new and use v_inf instead
-        v_2_new[v_2_new < 0] = v_inf
-        m_2_new = update_params.update_m_2(m_1, a, v_2_new, v_1)
-
+        m_1_old = m_1
         V_2 = np.diag(v_2)
         V = update_params.calc_V(V_2, sigma0, XT_X)
+        m = update_params.calc_m(V, V_2, m_2, sigma0, XT_y)
+        v = np.diag(V)
 
-        v_1_new = update_params.update_v_1(v_2, V)
-        m_1_new = update_params.update_m_1(V, v_2, m_2, sigma0, X, y, v_1_new)
+        v_1 = update_params.update_v_1(v_2, V)
+        m_1 = update_params.update_m_1(m, v, m_2, v_2, v_1)
 
-        maxdiff = np.max(np.abs(np.multiply(m_2_new, 1.0 / m_2)))
-        convergence = maxdiff < 1e-1
+        p_2 = update_params.update_p_2(v_1, v_s, m_1)
+        a = update_params.calc_a(p_2, p_3, m_1, v_1, v_s)
+        b = update_params.calc_b(p_2, p_3, m_1, v_1, v_s)
 
-        m_1 = m_1_new
-        v_1 = v_1_new
-        m_2 = m_2_new
-        p_2 = p_2_new
-        v_2 = v_2_new
+        v_2 = update_params.update_v_2(a, b, v_1)
+        v_2[v_2 < 0] = 1e17
+        m_2 = update_params.update_m_2(m_1, a, v_2, v_1)
+
+        maxdiff = np.max(np.abs(m_1 / m_1_old))
+        mindiff = np.min(np.abs(m_1 / m_1_old))
+        convergence = maxdiff < 1.00001 and mindiff > 0.9999
+        itr += 1
+
+    return m_1
 
 
-        itr = itr + 1
-
-    print itr
-    log_evidence = calc_log_evidence()
-    return {'mu': m_2, 'log_evidence': log_evidence}
-
-
-def EP_single_neuron(activity, ro, ns, pprior, cdf_factor):
-    results = [EP(activity, ro, n, pprior, cdf_factor) for n in ns]
+def EP_single_neuron(activity, ro, ns, v_s, sigma0):
+    results = [EP(activity, ro, n, v_s, sigma0) for n in ns]
     return results
 
 
@@ -99,50 +99,53 @@ def do_multiprocess(function, function_args, num_processes):
     return results_list
 
 
-def generate_J_S(likelihood_function, bias, num_neurons, time_steps, sparsity):
+def generate_J_S(likelihood_function, bias, N, T, sparsity, v_s):
+    """This function generates a network (couplings) and it's activity
+    according to the input variables
+
+    :param likelihood_function: function for the model's likelihood
+    :param bias: 0 if there is no bias in the model, 1 if there is
+    :param N: number of neurons in the network
+    :param T: number of time steps for which the network is simulated
+    :param sparsity: sparsity of the coupling's prior
+    :param v_s: variance of the "slab" part in the coupling's prior
+    :return:
+    """
     if bias != 0 and bias != 1:
             raise ValueError('bias should be either 1 or 0')
 
-    N = num_neurons
-    T = time_steps
-
     # Add a column for bias if it is part of the model
-    J = spike_and_slab(sparsity, N, bias)
-    J = J + 0.0
+    J = spike_and_slab(sparsity, N, bias, v_s)
+    J += 0.0 # to avoid negative zeros
     S0 = - np.ones(N + bias)
 
-    if likelihood_function != 'gaussian' and likelihood_function != 'exp_cosh':
+    if likelihood_function != 'gaussian' and likelihood_function != 'exp_cosh' and likelihood_function != 'logistic':
         raise ValueError('Unknown likelihood function')
 
     S = generate_spikes(N, T, S0, J, likelihood_function, bias)
 
-    cdf_factor = 1.0 if likelihood_function == 'probit' else 1.6
-
-    return S, J, cdf_factor
+    return S, J
 
 
-def do_inference(S, J, N, num_processes, pprior, sparsity,cdf_factor):
+def do_inference(S, J, N, num_processes, sparsity, v_s, sigma0):
     # infere coupling from S
     J_est_EP = np.empty(J.shape)
-    log_evidence = 0.0
 
-    #prepare inputs for multi processing
+    # prepare inputs for multi processing
     args_multi = []
     indices = range(N)
     inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
     for input_indices in inputs:
-        args_multi.append((S, sparsity, input_indices, pprior, cdf_factor))
+        args_multi.append((S, sparsity, input_indices, v_s, sigma0))
 
     results = do_multiprocess(multi_process_EP, args_multi, num_processes)
 
     for i, indices in enumerate(inputs):
-        mus = [results[i][j]['mu'] for j in range(len(results[i]))]
+        mus = [results[i][j] for j in range(len(results[i]))]
         J_est_EP[:, indices] = np.array(mus).transpose()
 
-        evidences_tmp = [results[i][j]['log_evidence'] for j in range(len(results[i]))]
-        log_evidence += np.sum(np.array(evidences_tmp), axis=0)
+    return J_est_EP
 
-    return J_est_EP, log_evidence
 
 @click.command()
 @click.option('--num_neurons',
@@ -159,51 +162,25 @@ def do_inference(S, J, N, num_processes, pprior, sparsity,cdf_factor):
 @click.option('--sparsity', type=click.FLOAT,
               default=0.3,
               help='Set sparsity of connectivity, aka ro parameter.')
-@click.option('--pprior',
-              help='Set pprior for the EP. If a list the inference will be done for every pprior')
-@click.option('--activity_mat_file', type=click.STRING,
-              default='')
-@click.option('--bias', type=click.INT,
-              default=0,
-              help='1 if bias should be included in the model, 0 otherwise')
 @click.option('--num_trials', type=click.INT,
               default=1,
               help='number of trials with different S ad J for given settings')
-def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, pprior,
-         activity_mat_file, bias, num_trials):
+def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, num_trials):
 
-    ppriors = [float(num) for num in pprior.split(',')]
+    sigma0 = 1.0
+    ppriors = ['0.0', '1.0']  # Not used, just for compatibility
 
-    if activity_mat_file:
-        # If only
-        N, T, S, J, J_est_lasso, _, cdf_factor = get_J_S_from_mat_file(activity_mat_file, likelihood_function)
-        J_est_EPs = []
-        log_evidences = []
-        for pprior in ppriors:
-            results = do_inference(S, J, N, num_processes, pprior, sparsity,cdf_factor)
-            J_est_EPs.append(results[0])
-            log_evidences.append(results[1])
-
-        dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function)
-        save_inference_results_to_file(dir_name, S, J, bias, J_est_EPs, likelihood_function,
-                                   ppriors, log_evidences, J_est_lasso)
-
-    else:
-        num_neurons = [int(num) for num in num_neurons.split(',')]
-        time_steps = [int(num) for num in time_steps.split(',')]
+    num_neurons = [int(num) for num in num_neurons.split(',')]
+    time_steps = [int(num) for num in time_steps.split(',')]
+    for i in range(num_trials):
         for N in num_neurons:
+            v_s = 1.0 / np.sqrt(N)
             for T in time_steps:
                 dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function)
-                S, J, cdf_factor = generate_J_S(likelihood_function, bias, N, T, sparsity)
-                for i in range(num_trials):
-                    J_est_EPs = []
-                    log_evidences = []
-                    for pprior in ppriors:
-                        results = do_inference(S, J, N, num_processes, pprior, sparsity,cdf_factor)
-                        J_est_EPs.append(results[0])
-                        log_evidences.append(results[1])
-                    save_inference_results_to_file(dir_name, S, J, bias, J_est_EPs, likelihood_function,
-                                                   ppriors, log_evidences, [], i)
+                S, J = generate_J_S(likelihood_function, 0, N, T, sparsity, v_s)
+                J_est_EP = do_inference(S, J, N, num_processes, sparsity, v_s, sigma0)
+                save_inference_results_to_file(dir_name, S, J, 0, [J_est_EP], likelihood_function,
+                                               ppriors, [], [], i)
 
 if __name__ == "__main__":
     main()
