@@ -2,9 +2,9 @@ import numpy as np
 from scipy import stats
 from scipy.special import expit
 
-def exp_cosh(H):
-    beta = 0.4
 
+def exp_cosh(H):
+    beta = 1.0
     return 0.5 * np.exp(beta * H)/np.cosh(beta * H)
 
 
@@ -13,7 +13,6 @@ def gaussian(H):
 
     cov = np.diag(np.repeat(a, H.shape[1]))
     return np.random.multivariate_normal(H[0], cov)
-
 
 
 def kinetic_ising_model(S, J, energy_function):
