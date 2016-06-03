@@ -57,7 +57,7 @@ def test_update_p_2():
 
 
 def test_calc_a():
-    from scipy.special import logit
+    from scipy.stats import logistic
     from update_params_linear_regression import calc_a
 
     p_2_new = np.array([1.0, 2.0, 3.0])
@@ -67,15 +67,15 @@ def test_calc_a():
     v_s = np.array([3.0, 1.0, 2.0])
 
     res = calc_a(p_2_new, p_3, m_1, v_1, v_s)
-    expected_res = np.array([0.5, 2.0, 1.0]) * logit(np.array([3.0, 3.0, 4.0])) + \
-                   np.array([2.0, 4.0, 3.0]) * logit(np.array([-3.0, -3.0, -4.0]))
+    expected_res = np.array([0.5, 2.0, 1.0]) * logistic.cdf(np.array([3.0, 3.0, 4.0])) + \
+                   np.array([2.0, 4.0, 3.0]) * logistic.cdf(np.array([-3.0, -3.0, -4.0]))
 
     np.testing.assert_array_almost_equal(res, expected_res)
 
 
 def test_calc_b():
-    from scipy.special import logit
-    from update_params_linear_regression import calc_a
+    from scipy.stats import logistic
+    from update_params_linear_regression import calc_b
 
     p_2_new = np.array([1.0, 2.0, 3.0])
     p_3 = np.array([2.0, 1.0, 1.0])
@@ -83,9 +83,9 @@ def test_calc_b():
     v_1 = np.array([1.0, 1.0, 1.0])
     v_s = np.array([3.0, 1.0, 2.0])
 
-    res = calc_a(p_2_new, p_3, m_1, v_1, v_s)
-    expected_res = np.array([0.0, 3.5, 2.0 / 3.0]) * logit(np.array([3.0, 3.0, 4.0])) + \
-                   np.array([3.0, 15.0, 8.0]) * logit(np.array([-3.0, -3.0, -4.0]))
+    res = calc_b(p_2_new, p_3, m_1, v_1, v_s)
+    expected_res = np.array([0.0, 3.5, 2.0 / 3.0]) * logistic.cdf(np.array([3.0, 3.0, 4.0])) + \
+                   np.array([3.0, 15.0, 8.0]) * logistic.cdf(np.array([-3.0, -3.0, -4.0]))
 
     np.testing.assert_array_almost_equal(res, expected_res)
 
@@ -112,10 +112,11 @@ def test_calc_m():
     V = np.array([[1.0, 1.0, 0.0], [0.0, 2.0, 1.0], [2.0, 0.0, 1.0]])
     X = np.array([[1.0, 2.0, 1.0], [2.0, 3.0, 1.0]])
     y = np.array([1.0, -1.0])
+    XT_y = np.dot(X.T, y)
     m_2 = np.array([1.0, 4.0, 3.0])
     sigma0 = 0.5
 
-    res = calc_m(V, V_2, m_2, sigma0, X, y)
+    res = calc_m(V, V_2, m_2, sigma0, XT_y)
     expected_res = np.array([-5.0, -1.0, -3.0])
 
     np.testing.assert_array_equal(res, expected_res)
