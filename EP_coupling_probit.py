@@ -183,6 +183,8 @@ def generate_J_S(likelihood_function, bias, num_neurons, time_steps, sparsity):
         energy_function = stats.norm.cdf
     elif likelihood_function == 'logistic':
         energy_function = expit
+    elif likelihood_function == 'exp_cosh':
+        energy_function = likelihood_function
     else:
         raise ValueError('Unknown likelihood function')
 
