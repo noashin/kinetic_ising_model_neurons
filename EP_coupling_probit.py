@@ -190,8 +190,7 @@ def generate_J_S(likelihood_function, bias, num_neurons, time_steps, sparsity):
 
     S = generate_spikes(N, T, S0, J, energy_function, bias)
 
-    cdf_factor = 1.0 if likelihood_function == 'probit' else 1.6
-
+    cdf_factor = 1.6 if likelihood_function == 'logistic' else 1.0
     return S, J, cdf_factor
 
 
