@@ -176,7 +176,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
         for N in num_neurons:
             v_s = 1.0 / np.sqrt(N)
             for T in time_steps:
-                dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function)
+                dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function, approx='gaussian')
                 S, J = generate_J_S(likelihood_function, 0, N, T, sparsity, v_s)
                 J_est_EP = do_inference(S, J, N, num_processes, sparsity, v_s, sigma0)
                 save_inference_results_to_file(dir_name, S, J, 0, [J_est_EP], likelihood_function,
