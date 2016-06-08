@@ -19,7 +19,7 @@ def calc_log_evidence(a, b, nu, s, mu, m, v, N, pprior):
     m_learnt = m[1:, :]
     s = s[~np.isnan(s)]
 
-    B = np.dot(mu, np.multiply(mu, nu / 1.0)) - np.sum(np.multiply(v_learnt**(-1.0), m_learnt**2.0))
+    B = np.dot(mu, np.multiply(mu, nu / 1.0)) - np.sum(np.multiply(v_learnt ** (-1.0), m_learnt ** 2.0))
 
     log_C = np.sum(np.log(pprior * a + (1.0 - pprior) * b))
 
@@ -85,7 +85,7 @@ def EP(activity, n, pprior, cdf_factor):
     mu = np.zeros(N)
     nu = np.ones(N) * (pprior * sigma1 + (1 - pprior) * sigma0)
 
-    p_ = np.ones(N)*pprior
+    p_ = np.ones(N) * pprior
 
     v[T, :] = nu
 
@@ -129,7 +129,7 @@ def EP(activity, n, pprior, cdf_factor):
         a[nu_old_pos_positions] = prior_update.update_a(p_, p_old)[nu_old_pos_positions]
         b[nu_old_pos_positions] = prior_update.update_b(p_, p_old)
 
-        s[T: T+N] = prior_update.update_s(z, nu_old, v[T], c1, c3)
+        s[T: T + N] = prior_update.update_s(z, nu_old, v[T], c1, c3)
 
         maxdiff = np.max([np.abs(nu - nu_backup), np.abs(mu - mu_backup), np.abs(p_ - p_backup)])
 
@@ -169,7 +169,7 @@ def do_multiprocess(function, function_args, num_processes):
 
 def generate_J_S(likelihood_function, bias, num_neurons, time_steps, sparsity):
     if bias != 0 and bias != 1:
-            raise ValueError('bias should be either 1 or 0')
+        raise ValueError('bias should be either 1 or 0')
 
     N = num_neurons
     T = time_steps
@@ -194,7 +194,7 @@ def generate_J_S(likelihood_function, bias, num_neurons, time_steps, sparsity):
     return S, J, cdf_factor
 
 
-def do_inference(S, J, N, num_processes, pprior,cdf_factor):
+def do_inference(S, J, N, num_processes, pprior, cdf_factor):
     # infere coupling from S
     J_est_EP = np.empty(J.shape)
     log_evidence = 0.0
@@ -245,7 +245,6 @@ def do_inference(S, J, N, num_processes, pprior,cdf_factor):
               help='number of trials with different S ad J for given settings')
 def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, pprior,
          activity_mat_file, bias, num_trials):
-
     ppriors = [float(num) for num in pprior.split(',')]
 
     # If a file containing S an J is supplied the read it
@@ -260,7 +259,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
 
         dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function)
         save_inference_results_to_file(dir_name, S, J, bias, J_est_EPs, likelihood_function,
-                                   ppriors, log_evidences, J_est_lasso)
+                                       ppriors, log_evidences, J_est_lasso)
 
     # If not generate S and J
     else:
@@ -279,6 +278,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
                         log_evidences.append(results[1])
                     save_inference_results_to_file(dir_name, S, J, bias, J_est_EPs, likelihood_function,
                                                    ppriors, log_evidences, [], i)
+
 
 if __name__ == "__main__":
     main()
