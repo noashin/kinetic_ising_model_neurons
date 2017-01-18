@@ -2,13 +2,19 @@ import numpy as np
 from scipy.special import logit
 from scipy.stats import logistic
 
+
+v_inf = 100
+
 def update_p_3(p0, N):
     return np.repeat(logit(p0), N)
 
 
 def update_v_2(a, b, v_1):
-    return (a ** 2 - b) ** (-1) - v_1
-
+    a_b = (a ** 2 - b) ** (-1)
+    ind = np.where(a_b < v_1)[0]
+    res = a_b - v_1
+    res[ind] = v_inf
+    return res
 
 def update_m_2(m_1, a, v_2_new, v_1):
     return m_1 - np.multiply(a, v_2_new + v_1)
