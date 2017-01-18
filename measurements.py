@@ -1,6 +1,14 @@
 import numpy as np
 
 
+def ms(J, J_est):
+    J = J.flatten()
+    J_est = J_est.flatten()
+
+    err = np.sum((J - J_est) ** 2)
+
+    return err / J.shape[0]
+
 def r_square(J, J_est):
     J = J.flatten()
     J_est = J_est.flatten()
