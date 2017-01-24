@@ -1,4 +1,5 @@
 import os
+import time
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -7,11 +8,13 @@ import seaborn
 
 
 def get_dir_name(ppriors, N, T, sparsity, likelihood_function, approx='probit'):
+
     if len(ppriors) == 1:
-        dir_name = approx + '_N_' + str(N) + '_T_' + str(T) + '_ro_' + str(sparsity).replace(".", "") \
+        dir_name = time.strftime("%Y%m%d_%H%M%S") + approx + '_N_' + str(N) + '_T_' + \
+                   str(T) + '_ro_' + str(sparsity).replace(".", "") \
                 + "_pprior_" + str(ppriors[0]).replace('.', '') + "_" + likelihood_function
     else:
-        dir_name = approx + '_N_' + str(N) + '_T_' + str(T) + '_ro_' + \
+        dir_name = time.strftime("%Y%m%d_%H%M%S") + approx + '_N_' + str(N) + '_T_' + str(T) + '_ro_' + \
                    str(sparsity).replace(".", "") + '_' + likelihood_function
 
     # create a new directory to save the results
