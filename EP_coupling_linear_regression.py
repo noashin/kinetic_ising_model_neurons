@@ -119,10 +119,8 @@ def EP(activity, ro, n, v_s, sigma0):
         mindiff = np.min(np.abs(m_1 / m_1_old))
         convergence = maxdiff < 1.0000001 and mindiff > 0.999999
         itr += 1
-    print convergence
     log_evidence = calc_log_evidence(m, v_2, sigma0, X, y, m_1, v_1, m_2, v, p, p_3, p_2)
-
-    return {'mu': m_1, 'log_evidence': log_evidence}
+    return {'mu': m_1, 'log_evidence': log_evidence, 'gamma': 1. / (1. + np.exp(-p))}
 
 
 def EP_single_neuron(activity, ro, ns, v_s, sigma0):
@@ -176,7 +174,7 @@ def generate_J_S(likelihood_function, bias, N, T, sparsity, v_s):
     return S, J
 
 
-def do_inference(S, J, N, num_processes, sparsity, v_s, sigma0):
+def do_inference(S, J, N, num_processes, sparsity, v_s, sigma0, return_gamma=False):
     # infere coupling from S
     J_est_EP = np.empty(J.shape)
     log_evidence = 0.0
@@ -192,12 +190,27 @@ def do_inference(S, J, N, num_processes, sparsity, v_s, sigma0):
 
     for i, indices in enumerate(inputs):
         mus = [results[i][j]['mu'] for j in range(len(results[i]))]
+        gammas = [results[i][j]['gamma'] for j in range(len(results[i]))]
         J_est_EP[:, indices] = np.array(mus).transpose()
 
         evidences_tmp = [results[i][j]['log_evidence'] for j in range(len(results[i]))]
         log_evidence += np.sum(np.array(evidences_tmp), axis=0)
 
-    return J_est_EP, log_evidence
+    if return_gamma:
+        return J_est_EP, log_evidence, gammas
+    else:
+        return J_est_EP, log_evidence
+
+def EM(S, J, N, num_processes, init_ro, v_s, sigma0):
+    diff = 0
+    ro = init_ro
+    while diff < 0.9999999 or diff > 1.000001:
+        J_est_EP, log_evidence, gammas = do_inference(S, J, N, num_processes, ro, v_s, sigma0, True)
+        new_ro = np.mean(gammas)
+        diff = new_ro / ro
+        ro = new_ro
+        print ro
+    return J_est_EP, log_evidence, ro
 
 
 @click.command()
@@ -220,11 +233,30 @@ def do_inference(S, J, N, num_processes, sparsity, v_s, sigma0):
               help='number of trials with different S ad J for given settings')
 @click.option('--pprior',
               help='Set pprior for the EP. If a list the inference will be done for every pprior')
-def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, num_trials, pprior):
+@click.option('--em',
+              default=False,
+              help='If True performs EM to find the most likely sparsity.')
+def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, num_trials, pprior, em):
     sigma0 = 1.0
     ppriors = [float(num) for num in pprior.split(',')]
     num_neurons = [int(num) for num in num_neurons.split(',')]
     time_steps = [int(num) for num in time_steps.split(',')]
+
+    if em:
+        #import ipdb; ipdb.set_trace()
+        pprior = ppriors[0]
+        N = num_neurons[0]
+        v_s = 1. / np.sqrt(N)
+        T = time_steps[0]
+        dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function, approx='gaussian')
+        S, J = generate_J_S(likelihood_function, 0, N, T, sparsity, v_s)
+        results = EM(S, J, N, num_processes, pprior, v_s, sigma0)
+        save_inference_results_to_file(dir_name, S, J, 0, [results[0]], likelihood_function,
+                                               ppriors, results[1], [], 0)
+        import ipdb; ipdb.set_trace()
+        return
+
+
     for i in range(num_trials):
         for N in num_neurons:
             v_s = 1.0 / np.sqrt(N)
