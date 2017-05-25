@@ -70,8 +70,8 @@ def EP(activity, ro, n, v_s, sigma0, bias=0):
     :param sigma0: assumed variance of the likelihood
     :return: The approximated couplings for neuron n
     """
-
-    N = activity.shape[1] + bias
+    #import ipdb; ipdb.set_trace()
+    N = activity.shape[1] #+ bias
 
     # Initivalization
     v_s = v_s * np.ones(N)
@@ -123,8 +123,6 @@ def EP(activity, ro, n, v_s, sigma0, bias=0):
         m_2 = update_params.update_m_2(m_1, a, v_2, v_1)
 
         p = p_2 + p_3
-        #import ipdb; ipdb.set_trace()
-
         maxdiff = np.max([np.max(np.abs(m_1 / m_1_old)), np.max(np.abs(v_1 / v_1_old))])
         mindiff = np.min([np.min(np.abs(m_1 / m_1_old)), np.min(np.abs(v_1 / v_1_old))])
         convergence = maxdiff < 1.00001 and mindiff > 0.9999
@@ -212,16 +210,22 @@ def do_inference(S, J, N, num_processes, sparsity, v_s, sigma0, return_gamma=Fal
     else:
         return J_est_EP, log_evidence
 
-# TODO: make it work with bias!!!!!
-def EM(S, J, N, num_processes, init_ro, v_s, sigma0):
+def EM(S, J, N, num_processes, init_ro, v_s, sigma0, bias):
     diff = 0
     ro = init_ro
     while diff < 0.9999999 or diff > 1.000001:
         J_est_EP, log_evidence, gammas = do_inference(S, J, N, num_processes, ro, v_s, sigma0, True)
-        new_ro = np.mean(gammas)
-        diff = new_ro / ro
-        ro = new_ro
+        if bias:
+            new_ro = np.mean(np.array(gammas)[:-1, :])
+            diff = new_ro / ro[0]
+            ro = np.hstack([np.repeat(new_ro, N), 1])
+        else:
+            new_ro = np.mean(gammas)
+            diff = new_ro / ro[0]
+            ro = new_ro
+
         print ro
+    print ro
     return J_est_EP, log_evidence, ro
 
 
@@ -258,6 +262,8 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
     num_neurons = [int(num) for num in num_neurons.split(',')]
     time_steps = [int(num) for num in time_steps.split(',')]
     bias = int(bias)
+
+    return_gamma = False
     if em:
         # import ipdb; ipdb.set_trace()
         pprior = ppriors[0]
@@ -265,9 +271,13 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
         N = num_neurons[0]
         v_s = 1. / np.sqrt(N)
         T = time_steps[0]
+
+        if bias:
+            pprior = np.hstack([np.repeat(pprior, N), 1])
+
         dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function, approx='gaussian')
         S, J = generate_J_S(likelihood_function, bias, N, T, sparsity, v_s)
-        results = EM(S, J, N, num_processes, pprior, v_s, sigma0)
+        results = EM(S, J, N, num_processes, pprior, v_s, sigma0, bias)
         save_inference_results_to_file(dir_name, S, J, 0, [results[0]], likelihood_function,
                                        ppriors, results[1], [], 0)
 
@@ -285,9 +295,11 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
                 J_est_EPs = []
                 log_evidences = []
                 for pprior in ppriors:
+                    if bias:
+                        pprior = np.hstack([np.repeat(pprior, N), 1])
                     # pprior = 1. / (1. + np.exp(-pprior))
                     # print pprior
-                    results = do_inference(S, J, N, num_processes, pprior, v_s, sigma0, bias)
+                    results = do_inference(S, J, N, num_processes, pprior, v_s, sigma0, return_gamma, bias)
                     J_est_EPs.append(results[0])
                     log_evidences.append(results[1])
                 save_inference_results_to_file(dir_name, S, J, 0, [J_est_EPs], likelihood_function,

@@ -17,8 +17,8 @@ def main(show_plot, mat_file):
     try:
         mat_cont = sio.loadmat(mat_file)
         J = mat_cont['J']
-        J_est_1 = mat_cont['J_est_1']
-        J_est_2 = mat_cont['J_est_2']
+        J_est_2 = mat_cont['J_est_1']
+        J_est_1 = mat_cont['J_est_2']
 
     except IOError:
         print 'Wrong mat file name'

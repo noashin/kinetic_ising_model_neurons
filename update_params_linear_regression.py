@@ -43,14 +43,14 @@ def calc_b(p_2_new, p_3, m_1, v_1, v_s):
 
 
 def calc_V(V_2, sigma0, XT_X):
-    V_2_inv = np.linalg.inv(V_2)
+    V_2_inv = np.linalg.pinv(V_2)
     tmp_mat = V_2_inv + sigma0 ** (-2) * XT_X
 
     return np.linalg.pinv(tmp_mat)
 
 
 def calc_m(V, V_2, m_2, sigma0, XT_y):
-    l_mat = np.dot(np.linalg.inv(V_2), m_2)
+    l_mat = np.dot(np.linalg.pinv(V_2), m_2)
     r_mat = sigma0 ** (-2) * XT_y
 
     return np.dot(V, l_mat + r_mat)

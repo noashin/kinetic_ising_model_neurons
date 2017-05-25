@@ -7,14 +7,14 @@ import scipy.io as sio
 import seaborn
 
 
-def get_dir_name(ppriors, N, T, sparsity, likelihood_function, approx='probit'):
+def get_dir_name(ppriors, N, T, sparsity, likelihood_function, approx='probit', t_stamp=''):
 
     if len(ppriors) == 1:
-        dir_name = time.strftime("%Y%m%d_%H%M%S") + approx + '_N_' + str(N) + '_T_' + \
+        dir_name = t_stamp + approx + '_N_' + str(N) + '_T_' + \
                    str(T) + '_ro_' + str(sparsity).replace(".", "") \
                 + "_pprior_" + str(ppriors[0]).replace('.', '') + "_" + likelihood_function
     else:
-        dir_name = time.strftime("%Y%m%d_%H%M%S") + approx + '_N_' + str(N) + '_T_' + str(T) + '_ro_' + \
+        dir_name = t_stamp + approx + '_N_' + str(N) + '_T_' + str(T) + '_ro_' + \
                    str(sparsity).replace(".", "") + '_' + likelihood_function
 
     # create a new directory to save the results
