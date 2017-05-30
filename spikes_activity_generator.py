@@ -97,7 +97,7 @@ def generate_spikes(N, T, S0, J, energy_function, bias, no_spike=-1):
     if bias:
         S[:, N] = 1
     # Generate random numbers
-    X = np.random.rand(T-1, N)
+    X = np.random.rand(T - 1, N)
     #X = np.random.normal(size=(T-1, N))
 
     # Iterate through all time points

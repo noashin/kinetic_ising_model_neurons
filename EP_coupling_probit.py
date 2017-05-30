@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 from scipy import stats
 from scipy.special import expit
@@ -264,9 +266,9 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
             J_est_EPs.append(results[0])
             log_evidences.append(results[1])
 
-        dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function)
+        dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function, t_stamp=t_stamp)
         save_inference_results_to_file(dir_name, S, J, bias, J_est_EPs, likelihood_function,
-                                       ppriors, log_evidences, J_est_lasso, t_stamp=t_stamp)
+                                       ppriors, log_evidences, J_est_lasso)
 
     # If not generate S and J
     else:
@@ -276,7 +278,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
             for N in num_neurons:
                 for T in time_steps:
                     v_s = 1
-                    dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function)
+                    dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function, t_stamp=t_stamp)
                     S, J, cdf_factor = generate_J_S(likelihood_function, bias, N, T, sparsity, v_s)
                     J_est_EPs = []
                     log_evidences = []
@@ -287,7 +289,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
                         J_est_EPs.append(results[0])
                         log_evidences.append(results[1])
                     save_inference_results_to_file(dir_name, S, J, bias, J_est_EPs, likelihood_function,
-                                                   ppriors, log_evidences, [], i, t_stamp=t_stamp)
+                                                   ppriors, log_evidences, [], i)
 
 
 if __name__ == "__main__":
