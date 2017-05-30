@@ -5,13 +5,14 @@ import click
 from scipy.stats import logistic as log
 from scipy.stats import norm as norm
 import scipy.linalg
+from scipy.optimize import minimize
 
 from spikes_activity_generator import generate_spikes, spike_and_slab
 from plotting_saving import save_inference_results_to_file, get_dir_name
 import update_params_linear_regression as update_params
 
 
-def calc_log_evidence(m, v_2, sigma_0, X, y, m_1, v_1, m_2, v, p, p_3, p_2):
+def calc_log_evidence(m, v_2, sigma_0, X, y, m_1, v_1, m_2, v, p, p_3, p_2, v_s):
     sigma_0_inv = 1. / sigma_0
     V_2 = np.diag(v_2)
     v_2_inv = 1. / v_2
@@ -23,14 +24,18 @@ def calc_log_evidence(m, v_2, sigma_0, X, y, m_1, v_1, m_2, v, p, p_3, p_2):
     m_s_v = np.multiply(m ** 2, v_inv)
 
     n, d = X.shape
-    alpha = scipy.linalg.det(np.identity(d) + sigma_0_inv * np.dot(V_2, np.dot(X.T, X)))
+    try:
+        alpha = scipy.linalg.det(np.identity(d) + sigma_0_inv * np.dot(V_2, np.dot(X.T, X)))
+    except ValueError:
+        import ipdb; ipdb.set_trace()
+
 
     cdf_p3 = log.cdf(p_3)
     cdf_m_p3 = log.cdf(-p_3)
     cdf_p2 = log.cdf(p_2)
     cdf_m_p2 = log.cdf(-p_2)
 
-    c = cdf_p3 * norm.pdf(0, m_1, np.sqrt(v_1 + v)) + cdf_m_p3 * norm.pdf(0, m_1, np.sqrt(v_1))
+    c = cdf_p3 * norm.pdf(0, m_1, np.sqrt(v_1 + v_s)) + cdf_m_p3 * norm.pdf(0, m_1, np.sqrt(v_1))
     c[np.where(c == 0)[0]] = 0.0000000001
 
     log_s1 = 0.5 * (np.dot(m.T, np.dot(V_2_inv, m_2) + sigma_0_inv * np.dot(X.T, y)) -
@@ -73,8 +78,10 @@ def EP(activity, ro, n, v_s, sigma0, bias=0):
     #import ipdb; ipdb.set_trace()
     N = activity.shape[1] #+ bias
 
-    # Initivalization
-    v_s = v_s * np.ones(N)
+    # Initivalization. Make sure it is positive!
+    # During optimization ro or v_s may take negative values
+    v_s = (abs(v_s) * np.ones(N))
+    ro = abs(ro)
 
     if isinstance(ro, np.ndarray):
         p_3 = ro
@@ -101,7 +108,6 @@ def EP(activity, ro, n, v_s, sigma0, bias=0):
     itr = 0
     max_itr = 100000
     convergence = False
-
     # Repeat the updates rules until convergence
     while not convergence and itr < max_itr:
         m_1_old = m_1
@@ -127,7 +133,10 @@ def EP(activity, ro, n, v_s, sigma0, bias=0):
         mindiff = np.min([np.min(np.abs(m_1 / m_1_old)), np.min(np.abs(v_1 / v_1_old))])
         convergence = maxdiff < 1.00001 and mindiff > 0.9999
         itr += 1
-    log_evidence = calc_log_evidence(m, v_2, sigma0, X, y, m_1, v_1, m_2, v, p, p_3, p_2)
+
+        if np.isnan(p).any():
+            import ipdb; ipdb.set_trace()
+    log_evidence = calc_log_evidence(m, v_2, sigma0, X, y, m_1, v_1, m_2, v, p, p_3, p_2, v_s)
     # import ipdb; ipdb.set_trace()
     return {'mu': m_1, 'log_evidence': log_evidence, 'gamma': 1. / (1. + np.exp(-p))}
 
@@ -210,6 +219,24 @@ def do_inference(S, J, N, num_processes, sparsity, v_s, sigma0, return_gamma=Fal
     else:
         return J_est_EP, log_evidence
 
+
+def do_inference_wrapper(x0, S, J, N, num_processes):
+    ro = x0[0]
+    v_s = x0[1]
+    sigma0 = x0[2]
+    J_est_EP, log_evidence, gammas = do_inference(S, J, N, num_processes, ro, v_s, sigma0, True)
+
+    return -log_evidence
+
+def optimize_log_evidence(x0, S, J, N, num_processes):
+
+    opt_res = minimize(do_inference_wrapper, x0, args=(S, J, N, num_processes), method='Nelder-Mead')
+    x0_res = opt_res.x
+
+    if opt_res.success:
+        J_est_EP, log_evidence, gammas = do_inference(S, J, N, num_processes, x0_res[0], x0_res[1], x0_res[2], True)
+    return J_est_EP, log_evidence, x0_res[0]
+
 def EM(S, J, N, num_processes, init_ro, v_s, sigma0, bias):
     diff = 0
     ro = init_ro
@@ -256,7 +283,11 @@ def EM(S, J, N, num_processes, init_ro, v_s, sigma0, bias):
               default=False,
               type=click.BOOL,
               help='Whether to include bias/external fields in the model')
-def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, num_trials, pprior, em, bias):
+@click.option('--optimize',
+              default=False,
+              type=click.BOOL,
+              help='Whether to optimize the model hyper parameters or not')
+def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, num_trials, pprior, em, bias, optimize):
     sigma0 = 1.0
     ppriors = [float(num) for num in pprior.split(',')]
     num_neurons = [int(num) for num in num_neurons.split(',')]
@@ -264,7 +295,9 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
     bias = int(bias)
 
     return_gamma = False
-    if em:
+
+    t_stamp = time.strftime("%Y%m%d_%H%M%S") + '_'
+    if em or optimize:
         # import ipdb; ipdb.set_trace()
         pprior = ppriors[0]
 
@@ -275,15 +308,22 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
         if bias:
             pprior = np.hstack([np.repeat(pprior, N), 1])
 
-        dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function, approx='gaussian')
+        dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function, approx='gaussian', t_stamp=t_stamp)
         S, J = generate_J_S(likelihood_function, bias, N, T, sparsity, v_s)
-        results = EM(S, J, N, num_processes, pprior, v_s, sigma0, bias)
+
+        if em:
+            results = EM(S, J, N, num_processes, pprior, v_s, sigma0, bias)
+
+        if optimize:
+            v_s_init = 1.
+            sigma0_init = 0.1
+            x0 = [pprior, v_s_init, sigma0_init]
+            results = optimize_log_evidence(x0, S, J, N, num_processes)
+
         save_inference_results_to_file(dir_name, S, J, 0, [results[0]], likelihood_function,
                                        ppriors, results[1], [], 0)
-
         return
 
-    t_stamp = time.strftime("%Y%m%d_%H%M%S") + '_'
     # sparsity_t = 1. / (1. + np.exp(-sparsity))
     for i in range(num_trials):
         for N in num_neurons:
