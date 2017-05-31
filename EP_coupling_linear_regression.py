@@ -3,16 +3,31 @@ import numpy as np
 import multiprocessing as multiprocess
 import click
 from scipy.stats import logistic as log
+from scipy.special import logit
 from scipy.stats import norm as norm
 import scipy.linalg
 from scipy.optimize import minimize
+from scipy.optimize import basinhopping
 
 from spikes_activity_generator import generate_spikes, spike_and_slab
 from plotting_saving import save_inference_results_to_file, get_dir_name
 import update_params_linear_regression as update_params
 
 
-def calc_log_evidence(m, v_2, sigma_0, X, y, m_1, v_1, m_2, v, p, p_3, p_2, v_s):
+def calc_log_evidence(m, v_2, sigma_0, X, y, m_1, v_1, m_2, v, p, p_3, p_2, v_s, bias):
+    '''if bias:
+        m = m[:-1]
+        v_2 = v_2[:-1]
+        X = X[:,:-1]
+        m_1 = m_1[:-1]
+        v_1 = v_1[:-1]
+        m_2 = m_2[:-1]
+        v = v[:-1]
+        p = p[:-1]
+        p_3 = p_3[:-1]
+        p_2 = p_2[:-1]
+        v_s = v_s[:-1]'''
+
     sigma_0_inv = 1. / sigma_0
     V_2 = np.diag(v_2)
     v_2_inv = 1. / v_2
@@ -27,8 +42,8 @@ def calc_log_evidence(m, v_2, sigma_0, X, y, m_1, v_1, m_2, v, p, p_3, p_2, v_s)
     try:
         alpha = scipy.linalg.det(np.identity(d) + sigma_0_inv * np.dot(V_2, np.dot(X.T, X)))
     except ValueError:
-        import ipdb; ipdb.set_trace()
-
+        import ipdb;
+        ipdb.set_trace()
 
     cdf_p3 = log.cdf(p_3)
     cdf_m_p3 = log.cdf(-p_3)
@@ -75,16 +90,14 @@ def EP(activity, ro, n, v_s, sigma0, bias=0):
     :param sigma0: assumed variance of the likelihood
     :return: The approximated couplings for neuron n
     """
-    #import ipdb; ipdb.set_trace()
-    N = activity.shape[1] #+ bias
+    # import ipdb; ipdb.set_trace()
+    N = activity.shape[1]  # + bias
 
     # Initivalization. Make sure it is positive!
-    # During optimization ro or v_s may take negative values
-    v_s = (abs(v_s) * np.ones(N))
-    ro = abs(ro)
+    v_s = v_s * np.ones(N)
 
     if isinstance(ro, np.ndarray):
-        p_3 = ro
+        p_3 = logit(ro)
     else:
         p_3 = update_params.update_p_3(ro, N)
 
@@ -135,9 +148,10 @@ def EP(activity, ro, n, v_s, sigma0, bias=0):
         itr += 1
 
         if np.isnan(p).any():
-            import ipdb; ipdb.set_trace()
-    log_evidence = calc_log_evidence(m, v_2, sigma0, X, y, m_1, v_1, m_2, v, p, p_3, p_2, v_s)
-    # import ipdb; ipdb.set_trace()
+            import ipdb;
+            ipdb.set_trace()
+    log_evidence = calc_log_evidence(m, v_2, sigma0, X, y, m_1, v_1, m_2, v, p, p_3, p_2, v_s, bias)
+
     return {'mu': m_1, 'log_evidence': log_evidence, 'gamma': 1. / (1. + np.exp(-p))}
 
 
@@ -220,35 +234,45 @@ def do_inference(S, J, N, num_processes, sparsity, v_s, sigma0, return_gamma=Fal
         return J_est_EP, log_evidence
 
 
-def do_inference_wrapper(x0, S, J, N, num_processes):
+def do_inference_wrapper(x0, S, J, N, num_processes, bias):
     ro = x0[0]
     v_s = x0[1]
     sigma0 = x0[2]
-    J_est_EP, log_evidence, gammas = do_inference(S, J, N, num_processes, ro, v_s, sigma0, True)
+
+    if ro < 0 or ro > 0.9999 or v_s < 0 or sigma0 < 0:
+        return np.inf
+
+    if bias:
+        ro = np.hstack([np.repeat(ro, N), 0.999])
+    J_est_EP, log_evidence, gammas = do_inference(S, J, N, num_processes, ro, v_s, sigma0, True, bias)
 
     return -log_evidence
 
-def optimize_log_evidence(x0, S, J, N, num_processes):
 
-    opt_res = minimize(do_inference_wrapper, x0, args=(S, J, N, num_processes), method='Nelder-Mead')
+def optimize_log_evidence(x0, S, J, N, num_processes, bias):
+    opt_res = minimize(do_inference_wrapper, x0, args=(S, J, N, num_processes, bias), method='Nelder-Mead')
+    #opt_res = basinhopping(do_inference_wrapper, x0, minimizer_kwargs={'args': (S, J, N, num_processes, bias)})
     x0_res = opt_res.x
+    J_est_EP, log_evidence, gammas = do_inference(S, J, N, num_processes, x0_res[0], x0_res[1], x0_res[2], True, bias)
 
-    if opt_res.success:
-        J_est_EP, log_evidence, gammas = do_inference(S, J, N, num_processes, x0_res[0], x0_res[1], x0_res[2], True)
+    print opt_res.x
+
     return J_est_EP, log_evidence, x0_res[0]
 
+
 def EM(S, J, N, num_processes, init_ro, v_s, sigma0, bias):
+    #import ipdb; ipdb.set_trace()
     diff = 0
     ro = init_ro
-    while diff < 0.9999999 or diff > 1.000001:
-        J_est_EP, log_evidence, gammas = do_inference(S, J, N, num_processes, ro, v_s, sigma0, True)
+    while diff < 0.99999 or diff > 1.0001:
+        J_est_EP, log_evidence, gammas = do_inference(S, J, N, num_processes, ro, v_s, sigma0, True, bias)
         if bias:
             new_ro = np.mean(np.array(gammas)[:-1, :])
             diff = new_ro / ro[0]
             ro = np.hstack([np.repeat(new_ro, N), 1])
         else:
             new_ro = np.mean(gammas)
-            diff = new_ro / ro[0]
+            diff = new_ro / ro
             ro = new_ro
 
         print ro
@@ -305,20 +329,20 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
         v_s = 1. / np.sqrt(N)
         T = time_steps[0]
 
-        if bias:
-            pprior = np.hstack([np.repeat(pprior, N), 1])
-
         dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function, approx='gaussian', t_stamp=t_stamp)
         S, J = generate_J_S(likelihood_function, bias, N, T, sparsity, v_s)
 
         if em:
+            if bias:
+                pprior = np.hstack([np.repeat(pprior, N), 0.999])
             results = EM(S, J, N, num_processes, pprior, v_s, sigma0, bias)
 
         if optimize:
             v_s_init = 1.
             sigma0_init = 0.1
+
             x0 = [pprior, v_s_init, sigma0_init]
-            results = optimize_log_evidence(x0, S, J, N, num_processes)
+            results = optimize_log_evidence(x0, S, J, N, num_processes, bias)
 
         save_inference_results_to_file(dir_name, S, J, 0, [results[0]], likelihood_function,
                                        ppriors, results[1], [], 0)
@@ -336,7 +360,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
                 log_evidences = []
                 for pprior in ppriors:
                     if bias:
-                        pprior = np.hstack([np.repeat(pprior, N), 1])
+                        pprior = np.hstack([np.repeat(pprior, N), 0.999])
                     # pprior = 1. / (1. + np.exp(-pprior))
                     # print pprior
                     results = do_inference(S, J, N, num_processes, pprior, v_s, sigma0, return_gamma, bias)
