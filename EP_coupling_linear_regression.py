@@ -178,7 +178,7 @@ def do_multiprocess(function, function_args, num_processes):
     return results_list
 
 
-def generate_J_S(likelihood_function, bias, N, T, sparsity, v_s):
+def generate_J_S(likelihood_function, bias, N, T, sparsity, v_s, bias_mean=0):
     """This function generates a network (couplings) and it's activity
     according to the input variables
 
@@ -194,7 +194,7 @@ def generate_J_S(likelihood_function, bias, N, T, sparsity, v_s):
         raise ValueError('bias should be either 1 or 0')
 
     # Add a column for bias if it is part of the model
-    J = spike_and_slab(sparsity, N, bias, v_s)
+    J = spike_and_slab(sparsity, N, bias, v_s, bias_mean)
     J += 0.0  # to avoid negative zeros
     S0 = - np.ones(N + bias)
 
@@ -251,7 +251,7 @@ def do_inference_wrapper(x0, S, J, N, num_processes, bias):
 
 def optimize_log_evidence(x0, S, J, N, num_processes, bias):
     opt_res = minimize(do_inference_wrapper, x0, args=(S, J, N, num_processes, bias), method='Nelder-Mead')
-    #opt_res = basinhopping(do_inference_wrapper, x0, minimizer_kwargs={'args': (S, J, N, num_processes, bias)})
+    # opt_res = basinhopping(do_inference_wrapper, x0, minimizer_kwargs={'args': (S, J, N, num_processes, bias)})
     x0_res = opt_res.x
     J_est_EP, log_evidence, gammas = do_inference(S, J, N, num_processes, x0_res[0], x0_res[1], x0_res[2], True, bias)
 
@@ -261,7 +261,7 @@ def optimize_log_evidence(x0, S, J, N, num_processes, bias):
 
 
 def EM(S, J, N, num_processes, init_ro, v_s, sigma0, bias):
-    #import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     diff = 0
     ro = init_ro
     while diff < 0.99999 or diff > 1.0001:
@@ -307,11 +307,16 @@ def EM(S, J, N, num_processes, init_ro, v_s, sigma0, bias):
               default=False,
               type=click.BOOL,
               help='Whether to include bias/external fields in the model')
+@click.option('--bias_mean',
+              default=0,
+              type=click.FLOAT,
+              help='The mean for the bias couplings')
 @click.option('--optimize',
               default=False,
               type=click.BOOL,
               help='Whether to optimize the model hyper parameters or not')
-def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, num_trials, pprior, em, bias, optimize):
+def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, num_trials, pprior, em, bias, bias_mean,
+         optimize):
     sigma0 = 1.0
     ppriors = [float(num) for num in pprior.split(',')]
     num_neurons = [int(num) for num in num_neurons.split(',')]
@@ -330,7 +335,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
         T = time_steps[0]
 
         dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function, approx='gaussian', t_stamp=t_stamp)
-        S, J = generate_J_S(likelihood_function, bias, N, T, sparsity, v_s)
+        S, J = generate_J_S(likelihood_function, bias, N, T, sparsity, v_s, bias_mean)
 
         if em:
             if bias:
@@ -355,7 +360,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
             for T in time_steps:
                 dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function, approx='gaussian',
                                         t_stamp=t_stamp)
-                S, J = generate_J_S(likelihood_function, bias, N, T, sparsity, v_s)
+                S, J = generate_J_S(likelihood_function, bias, N, T, sparsity, v_s, bias_mean)
                 J_est_EPs = []
                 log_evidences = []
                 for pprior in ppriors:
