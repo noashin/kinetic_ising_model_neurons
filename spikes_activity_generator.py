@@ -1,6 +1,7 @@
 import numpy as np
 from scipy import stats
 from scipy.special import expit
+from scipy.stats import multivariate_normal
 
 
 def exp_cosh(H):
@@ -9,6 +10,7 @@ def exp_cosh(H):
 
 
 def gaussian(H):
+    #import ipdb; ipdb.set_trace()
     a = 1
 
     cov = np.diag(np.repeat(a, H.shape[1]))
@@ -56,7 +58,7 @@ def compute_fields(S, J):
     return H
 
 
-def spike_and_slab(ro, N, bias, v_s = 1.0):
+def spike_and_slab(ro, N, bias, v_s=1.0, bias_mean=0):
     ''' This function generate spike and priors
 
     :param ro: sparsity
@@ -66,9 +68,11 @@ def spike_and_slab(ro, N, bias, v_s = 1.0):
     '''
 
     gamma = stats.bernoulli.rvs(p=ro, size=(N + bias, N))
+    normal_dist = np.random.normal(0.0, v_s, (N + bias, N))
+
     if bias:
         gamma[N, :] = 1
-    normal_dist = np.random.normal(0.0, v_s, (N + bias, N))
+        normal_dist[N, :] = np.random.normal(bias_mean, v_s, N)
 
     return gamma * normal_dist
 
@@ -104,10 +108,13 @@ def generate_spikes(N, T, S0, J, energy_function, bias, no_spike=-1):
     for i in range(1, T):
         # Compute probabilities of neuron firing
         p = kinetic_ising_model(np.array([S[i - 1]]), J, energy_function)
-        # Check if spike or not
-        if no_spike == -1:
-            S[i, :N] = 2 * (X[i - 1] < p) - 1
+        if energy_function == 'gaussian':
+            S[i, :N] = p
         else:
-            S[i, :N] = 2 * (X[i - 1] < p) / 2.0
+            # Check if spike or not
+            if no_spike == -1:
+                S[i, :N] = 2 * (X[i - 1] < p) - 1
+            else:
+                S[i, :N] = 2 * (X[i - 1] < p) / 2.0
 
     return S
