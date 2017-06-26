@@ -60,7 +60,7 @@ def update_likelihood_terms(mu, nu, v, m, s, activity, n, cdf_factor):
     return mu, nu, v, m, s
 
 
-def EP(activity, n, pprior, cdf_factor, v_s, bias):
+def EP(activity, n, pprior, cdf_factor, v_s, bias, bias_mean):
     """ This function perfoems EP and returns the infered couplings.
 
     :param activity: The network's activity
@@ -87,13 +87,8 @@ def EP(activity, n, pprior, cdf_factor, v_s, bias):
 
     mu = np.zeros(N)
 
-    if bias:
-        nu = pprior * sigma1 + (1 - pprior) * sigma0
-        p_ = pprior.copy()
-    else:
-        nu = np.ones(N) * (pprior * sigma1 + (1 - pprior) * sigma0)
-        p_ = np.ones(N) * pprior
-
+    nu = np.ones(N) * (pprior * sigma1 + (1 - pprior) * sigma0)
+    p_ = np.ones(N) * pprior
 
     v[T, :] = nu
 
@@ -111,12 +106,22 @@ def EP(activity, n, pprior, cdf_factor, v_s, bias):
         nu_old = prior_update.calc_nu_old(nu, v[T, :])
 
         # we take into consideration only terms with nu_old > 0. So we want to find their positions
-        nu_old_pos_positions = np.where(nu_old > 0)
-        nu_old_neg_positions = np.where(nu_old <= 0)
+        nu_old_pos_positions = np.where(nu_old[:N - bias] > 0)
+        nu_old_neg_positions = np.where(nu_old[: N - bias] <= 0)
 
         nu_old[nu_old_neg_positions] = nu[nu_old_neg_positions]
         mu_old = prior_update.calc_mu_old(mu, nu_old, v[T, :], m[T, :])
         mu_old[nu_old_neg_positions] = mu[nu_old_neg_positions]
+
+        if bias:
+            v_b = v[T, -1]
+            m_b = m[T, -1]
+            v_1 = 1. / (1. / nu[-1] - 1. / v_b)
+            m_1 = v_1 * (mu[-1] / nu[-1] - m_b / v_b)
+            v_bias = 1. / (1. / v_1 + 1. / v_s)
+            m_bias = v_bias * (m_1 / v_1 + bias_mean / v_s)
+            v[T, -1] = 1. / (1. / v_bias - 1. / v_1)
+            m[T, -1] = v[T, -1] * (m_bias / v_bias - m_1 / v_1)
 
         G0 = prior_update.calc_G(mu_old, nu_old, sigma0)
         G1 = prior_update.calc_G(mu_old, nu_old, sigma1)
@@ -152,8 +157,8 @@ def EP(activity, n, pprior, cdf_factor, v_s, bias):
     return {'mu': mu, 'log_evidence': log_evidence}
 
 
-def EP_single_neuron(activity, ns, pprior, cdf_factor, v_s, bias):
-    results = [EP(activity, n, pprior, cdf_factor, v_s, bias) for n in ns]
+def EP_single_neuron(activity, ns, pprior, cdf_factor, v_s, bias, bias_mean):
+    results = [EP(activity, n, pprior, cdf_factor, v_s, bias, bias_mean) for n in ns]
     return results
 
 
@@ -175,7 +180,7 @@ def do_multiprocess(function, function_args, num_processes):
     return results_list
 
 
-def generate_J_S(likelihood_function, bias, num_neurons, time_steps, sparsity, v_s):
+def generate_J_S(likelihood_function, bias, bias_mean, num_neurons, time_steps, sparsity, v_s):
     if bias != 0 and bias != 1:
         raise ValueError('bias should be either 1 or 0')
 
@@ -183,7 +188,7 @@ def generate_J_S(likelihood_function, bias, num_neurons, time_steps, sparsity, v
     T = time_steps
 
     # Add a column for bias if it is part of the model
-    J = spike_and_slab(sparsity, N, bias, v_s)
+    J = spike_and_slab(sparsity, N, bias, v_s, bias_mean)
     J += 0.0
     S0 = - np.ones(N + bias)
 
@@ -202,7 +207,7 @@ def generate_J_S(likelihood_function, bias, num_neurons, time_steps, sparsity, v
     return S, J, cdf_factor
 
 
-def do_inference(S, J, N, num_processes, pprior, cdf_factor, v_s=1.0, bias=0):
+def do_inference(S, J, N, num_processes, pprior, cdf_factor, v_s=1.0, bias=False, bias_mean=0):
     # infere coupling from S
     J_est_EP = np.empty(J.shape)
     log_evidence = 0.0
@@ -212,7 +217,7 @@ def do_inference(S, J, N, num_processes, pprior, cdf_factor, v_s=1.0, bias=0):
     indices = range(N)
     inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
     for input_indices in inputs:
-        args_multi.append((S, input_indices, pprior, cdf_factor, v_s, bias))
+        args_multi.append((S, input_indices, pprior, cdf_factor, v_s, bias, bias_mean))
 
     results = do_multiprocess(multi_process_EP, args_multi, num_processes)
 
@@ -245,14 +250,17 @@ def do_inference(S, J, N, num_processes, pprior, cdf_factor, v_s=1.0, bias=0):
               help='Set pprior for the EP. If a list the inference will be done for every pprior')
 @click.option('--activity_mat_file', type=click.STRING,
               default='')
-@click.option('--bias', type=click.INT,
+@click.option('--bias', type=click.BOOL,
+              default=False,
+              help='True if bias should be included in the model, False otherwise')
+@click.option('--bias_mean', type=click.FLOAT,
               default=0,
-              help='1 if bias should be included in the model, 0 otherwise')
+              help='The mean of the bias couplings if the model has bias')
 @click.option('--num_trials', type=click.INT,
               default=1,
               help='number of trials with different S ad J for given settings')
 def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, pprior,
-         activity_mat_file, bias, num_trials):
+         activity_mat_file, bias, bias_mean, num_trials):
     ppriors = [float(num) for num in pprior.split(',')]
 
     t_stamp = time.strftime("%Y%m%d_%H%M%S") + '_'
@@ -277,15 +285,13 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
         for i in range(num_trials):
             for N in num_neurons:
                 for T in time_steps:
-                    v_s = 1
+                    v_s = 1. / np.sqrt(N)
                     dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function, t_stamp=t_stamp)
-                    S, J, cdf_factor = generate_J_S(likelihood_function, bias, N, T, sparsity, v_s)
+                    S, J, cdf_factor = generate_J_S(likelihood_function, bias, bias_mean, N, T, sparsity, v_s)
                     J_est_EPs = []
                     log_evidences = []
                     for pprior in ppriors:
-                        if bias:
-                            pprior = np.hstack([np.repeat(pprior, N), 1])
-                        results = do_inference(S, J, N, num_processes, pprior, cdf_factor, v_s, bias)
+                        results = do_inference(S, J, N, num_processes, pprior, cdf_factor, v_s, bias, bias_mean)
                         J_est_EPs.append(results[0])
                         log_evidences.append(results[1])
                     save_inference_results_to_file(dir_name, S, J, bias, J_est_EPs, likelihood_function,
