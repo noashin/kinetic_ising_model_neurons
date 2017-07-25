@@ -106,7 +106,7 @@ def EP(activity, ro, n, v_s, sigma0, bias=0, bias_mean=0, max_itr=10000, w_i=[])
 
     if len(w_i):
         X = (activity[:-1, :].T * (2. * np.sqrt(w_i[:-1]))).T
-        y = activity[1:, n] / (2 * np.sqrt(w_i[1:]))
+        y = activity[1:, n] / (2 * np.sqrt(w_i[:-1]))
     else:
         X = activity[:-1, :]
         y = activity[1:, n]
