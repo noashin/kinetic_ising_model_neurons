@@ -69,7 +69,7 @@ def inv_logistic(x):
     return np.log(1.0 / (1.0 - x))
 
 
-def EP(activity, ro, n, v_s, sigma0, bias=0, bias_mean=0):
+def EP(activity, ro, n, v_s, sigma0, bias=0, bias_mean=0, max_itr=10000, w_i=[]):
     """Performs EP and returns the approximated couplings
 
     :param activity: Network's activity
@@ -103,14 +103,18 @@ def EP(activity, ro, n, v_s, sigma0, bias=0, bias_mean=0):
     # v_4 = 1
 
     # pre calculate constant matrices and vectors
-    X = activity[:-1, :]
-    y = activity[1:, n]
+
+    if len(w_i):
+        X = (activity[:-1, :].T * (2. * np.sqrt(w_i[:-1]))).T
+        y = activity[1:, n] / (2 * np.sqrt(w_i[1:]))
+    else:
+        X = activity[:-1, :]
+        y = activity[1:, n]
 
     XT_X = np.dot(X.T, X)
     XT_y = np.dot(X.T, y)
 
     itr = 0
-    max_itr = 100000
     convergence = False
     # Repeat the updates rules until convergence
     while not convergence and itr < max_itr:
@@ -149,7 +153,7 @@ def EP(activity, ro, n, v_s, sigma0, bias=0, bias_mean=0):
         if np.isnan(p).any():
             import ipdb;
             ipdb.set_trace()
-
+    # print convergence
     v_res = update_params.gaussian_prod_var(v_1, v_2)
     m_res = update_params.gaussian_prod_mean(m_1, v_1, m_2, v_2, v_res)
     log_evidence = calc_log_evidence(m, v_2, sigma0, X, y, m_1, v_1, m_2, v, p, p_3, p_2, v_s, bias)
@@ -359,7 +363,7 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
                 J_est_EPs = []
                 log_evidences = []
                 for pprior in ppriors:
-                    results = do_inference(S, J, N, num_processes, pprior, v_s, sigma0, return_gamma, bias, bias_mean)
+                    results = do_inference(S, J, N, num_processes, pprior, v_s, sigma0, return_gamma, bias, bias_mean * 2.)
                     J_est_EPs.append(results[0])
                     log_evidences.append(results[1])
                 save_inference_results_to_file(dir_name, S, J, 0, [J_est_EPs], likelihood_function,
