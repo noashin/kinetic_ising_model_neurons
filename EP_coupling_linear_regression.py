@@ -12,6 +12,62 @@ from plotting_saving import save_inference_results_to_file, get_dir_name
 import update_params_linear_regression as update_params
 
 
+def generate_J_S(likelihood_function, bias, N, T, sparsity, v_s, bias_mean=0):
+    """This function generates a network (couplings) and it's activity
+    according to the input variables
+
+    :param likelihood_function: function for the model's likelihood
+    :param bias: 0 if there is no bias in the model, 1 if there is
+    :param N: number of neurons in the network
+    :param T: number of time steps for which the network is simulated
+    :param sparsity: sparsity of the coupling's prior
+    :param v_s: variance of the "slab" part in the coupling's prior
+    :return:
+    """
+    if bias != 0 and bias != 1:
+        raise ValueError('bias should be either 1 or 0')
+
+    # Add a column for bias if it is part of the model
+    J = spike_and_slab(sparsity, N, bias, v_s, bias_mean)
+    J += 0.0  # to avoid negative zeros
+    S0 = - np.ones(N + bias)
+
+    if likelihood_function != 'gaussian' and likelihood_function != 'exp_cosh' and likelihood_function != 'logistic':
+        raise ValueError('Unknown likelihood function')
+
+    S = generate_spikes(N, T, S0, J, likelihood_function, bias)
+
+    return S, J
+
+
+def calculate_C_delta(S):
+    m = calculate_m(S)
+    delta_s = S - m
+
+    N = S.shape[1]
+    T = S.shape[0]
+
+    C = np.empty((N, N))
+    for i in range(N):
+        for j in range(N):
+            C[i, j] = np.dot(delta_s[:, i].T, delta_s[:, j]) / T
+    return C
+
+
+def calculate_D_delta(S):
+    m = calculate_m(S)
+    delta_s = S - m
+
+    N = S.shape[1]
+    T = S.shape[0]
+
+    C = np.empty((N, N))
+    for i in range(N):
+        for j in range(N):
+            C[i, j] = np.dot(delta_s[1:, i].T, delta_s[:-1, j]) / T
+    return C
+
+
 def calc_log_evidence(m, v_2, sigma_0, X, y, m_1, v_1, m_2, v, p, p_3, p_2, v_s, bias):
     ## TODO: Calculate properly with the bias!!
 
@@ -177,8 +233,8 @@ def maximize_bias(S, v_s, J, bias_mean, n, bias_var):
     return b
 
 
-def maximize_gauss_J(activity, n, sigma0, bias_constant, v_s):
-    X = activity[:-1, :]
+def get_J_tilde(n, sigma0, v_s, C_inv, D):
+    '''X = activity[:-1, :]
     y = activity[1:, n]
     bias_vec = np.repeat(bias_constant, y.shape)
 
@@ -188,8 +244,10 @@ def maximize_gauss_J(activity, n, sigma0, bias_constant, v_s):
 
     sigma_lp = np.linalg.inv(per_l + 1. / v_s)
 
-    m_lp = np.dot(sigma_lp, per_m_l)
-    return m_lp
+    m_lp = np.dot(sigma_lp, per_m_l)'''
+    # without prior
+    J_n = np.dot(C_inv, D[n].T)
+    return J_n
 
 
 def calculate_m(S):
@@ -203,20 +261,6 @@ def calculate_g(m, J):
 def calculate_mean_h(m, J, bias):
     g = calculate_g(m, J)
     return g + bias
-
-
-def calculate_C_delta(S):
-    m = calculate_m(S)
-    delta_s = S - m
-
-    N = S.shape[1]
-    T = S.shape[0]
-
-    C = np.empty((N, N))
-    for i in range(N):
-        for j in range(N):
-            C[i, j] = np.dot(delta_s[:, i].T, delta_s[:, j]) / T
-    return C
 
 
 def calculate_delta(J, C):
@@ -239,28 +283,27 @@ def calculate_a(J, C, m, bias):
     return np.array(integral)
 
 
-def EP_bias(S, ro, n, v_s, sigma0, bias, bias_mean, bias_var, C, m):
+def EP_bias(S, ro, n, v_s, sigma0, bias, bias_mean, bias_var, C, C_inv, D, m):
     converged = False
     bias_old = bias_mean
     i = 0
-    J_old = np.repeat(1, S.shape[1] - bias)
+    J_tilde = get_J_tilde(n, sigma0, v_s, C_inv, D)
+    a_old = 1.
     while not converged:
-        # J_new = EP(S[:, :-1], ro, n, v_s, sigma0, bias_constant=bias_old)
-
-        J_new = maximize_gauss_J(S[:, :-1], n, sigma0, bias_old, v_s)
-        a = calculate_a(J_new, C, m, bias_old)
-        J_new = J_new / a
+        a_new = calculate_a(J_tilde, C, m, bias_old)
+        J_new = J_tilde / a_new
         bias_new = maximize_bias(S[:, :-1], v_s, J_new, bias_mean, n, bias_var)
-        #import ipdb; ipdb.set_trace()
-        diff = np.abs(bias_new / bias_old)
-        maxdiff = np.max([diff, np.max(J_new / J_old)])
-        mindiff = np.min([diff, np.min(J_new / J_old)])
-        #print(bias_new)
-        #if maxdiff < 1.001 and mindiff > 0.999:
-        converged = True
+        # import ipdb; ipdb.set_trace()
+        diff_b = np.abs(bias_new / bias_old)
+        diff_a = np.abs(a_old / a_new)
+        maxdiff = np.max([diff_b, diff_a])
+        mindiff = np.min([diff_b, diff_a])
+        # print(bias_new)
+        if maxdiff < 1.001 and mindiff > 0.999:
+            converged = True
 
         bias_old = bias_new
-        J_old = J_new
+        a_old = a_new
         i += 1
     print(i, bias_new, maxdiff, mindiff)
     res = {}
@@ -270,9 +313,9 @@ def EP_bias(S, ro, n, v_s, sigma0, bias, bias_mean, bias_var, C, m):
     return res
 
 
-def EP_single_neuron(activity, ro, ns, v_s, sigma0, bias, bias_mean, bias_var, C, m):
+def EP_single_neuron(activity, ro, ns, v_s, sigma0, bias, bias_mean, bias_var, C, C_inv, D, m):
     if bias:
-        results = [EP_bias(activity, ro, n, v_s, sigma0, bias, bias_mean, bias_var, C, m) for n in ns]
+        results = [EP_bias(activity, ro, n, v_s, sigma0, bias, bias_mean, bias_var, C, C_inv, D, m) for n in ns]
     else:
         results = [EP(activity, ro, n, v_s, sigma0) for n in ns]
     return results
@@ -296,35 +339,9 @@ def do_multiprocess(function, function_args, num_processes):
     return results_list
 
 
-def generate_J_S(likelihood_function, bias, N, T, sparsity, v_s, bias_mean=0):
-    """This function generates a network (couplings) and it's activity
-    according to the input variables
-
-    :param likelihood_function: function for the model's likelihood
-    :param bias: 0 if there is no bias in the model, 1 if there is
-    :param N: number of neurons in the network
-    :param T: number of time steps for which the network is simulated
-    :param sparsity: sparsity of the coupling's prior
-    :param v_s: variance of the "slab" part in the coupling's prior
-    :return:
-    """
-    if bias != 0 and bias != 1:
-        raise ValueError('bias should be either 1 or 0')
-
-    # Add a column for bias if it is part of the model
-    J = spike_and_slab(sparsity, N, bias, v_s, bias_mean)
-    J += 0.0  # to avoid negative zeros
-    S0 = - np.ones(N + bias)
-
-    if likelihood_function != 'gaussian' and likelihood_function != 'exp_cosh' and likelihood_function != 'logistic':
-        raise ValueError('Unknown likelihood function')
-
-    S = generate_spikes(N, T, S0, J, likelihood_function, bias)
-
-    return S, J
-
-
-def do_inference(S, J, N, num_processes, sparsity, v_s, sigma0, return_gamma=False, bias=0, bias_mean=0, C=None, m=None,
+def do_inference(S, J, N, num_processes, sparsity, v_s, sigma0, return_gamma=False, bias=0, bias_mean=0, C=None,
+                 C_inv=None, D=None,
+                 m=None,
                  bias_var=1.0):
     # infere coupling from S
     J_est_EP = np.empty(J.shape)
@@ -335,7 +352,7 @@ def do_inference(S, J, N, num_processes, sparsity, v_s, sigma0, return_gamma=Fal
     indices = range(N)
     inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
     for input_indices in inputs:
-        args_multi.append((S, sparsity, input_indices, v_s, sigma0, bias, bias_mean, bias_var, C, m))
+        args_multi.append((S, sparsity, input_indices, v_s, sigma0, bias, bias_mean, bias_var, C, C_inv, D, m))
 
     results = do_multiprocess(multi_process_EP, args_multi, num_processes)
 
@@ -473,13 +490,15 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
                 dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function, approx='gaussian',
                                         t_stamp=t_stamp)
                 S, J = generate_J_S(likelihood_function, bias, N, T, sparsity, v_s, bias_mean)
-                C = calculate_C_delta(S[:, :N])
+                C = calculate_C_delta(S[1:, :N])
+                D = calculate_D_delta(S[1:, :N])
+                C_inv = np.linalg.inv(C)
                 m = calculate_m(S[:, :N])
                 J_est_EPs = []
                 log_evidences = []
                 for pprior in ppriors:
                     results = do_inference(S, J, N, num_processes, pprior, v_s, sigma0, return_gamma, bias, bias_mean,
-                                           C, m)
+                                           C, C_inv, D, m)
                     J_est_EPs.append(results[0])
                     log_evidences.append(results[1])
                 save_inference_results_to_file(dir_name, S, J, 0, [J_est_EPs], likelihood_function,
