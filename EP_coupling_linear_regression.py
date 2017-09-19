@@ -5,7 +5,7 @@ import click
 from scipy.stats import logistic as log
 from scipy.stats import norm as norm
 import scipy.linalg
-from scipy.optimize import minimize
+from scipy.optimize import minimize, fsolve, root, brentq, ridder, newton, bisect
 
 from spikes_activity_generator import generate_spikes, spike_and_slab
 from plotting_saving import save_inference_results_to_file, get_dir_name
@@ -45,7 +45,7 @@ def calc_log_evidence(m, v_2, sigma_0, X, y, m_1, v_1, m_2, v, p, p_3, p_2, v_s,
                     n * np.log(2 * np.pi * sigma_0) - sigma_0_inv * np.dot(y.T, y) -
                     np.dot(m_2.T, np.dot(V_2_inv, m_2)) - np.log(alpha) +
                     np.sum(np.log(1. + np.multiply(v_2, v_1_inv)) + m_1_s_v_1 + m_2_s_v_2 - m_s_v))
-    #import ipdb; ipdb.set_trace()
+    # import ipdb; ipdb.set_trace()
     log_s2 = 0.5 * np.sum(2. * np.log(c) + np.log(1. + np.multiply(v_1, v_2_inv)[: d - bias]) +
                           m_1_s_v_1[: d - bias] + m_2_s_v_2[: d - bias] - m_s_v[: d - bias] +
                           2. * np.log(log.cdf(p) * cdf_m_p3 + log.cdf(-p) * cdf_p3)
@@ -106,7 +106,6 @@ def EP(activity, ro, n, v_s, sigma0, bias=0, bias_mean=0, bias_constant=0, max_i
 
     XT_X = np.dot(X.T, X)
     XT_y = np.dot(X.T, y - np.repeat(bias_constant, y.shape))
-
     itr = 0
     convergence = False
     # Repeat the updates rules until convergence
@@ -155,39 +154,125 @@ def EP(activity, ro, n, v_s, sigma0, bias=0, bias_mean=0, bias_constant=0, max_i
 
 
 def maximize_bias(S, v_s, J, bias_mean, n, bias_var):
-    T, N = S.shape
+    '''T, N = S.shape
     sigma_l = (T / v_s) ** -0.5
-    mu_l = (sigma_l ** 2 / v_s) * np.sum(np.dot(- S[:-1], J) + S[1:, n])
+    mu_l = (sigma_l ** 2 / v_s) * np.sum(S[1:, n] - np.dot(S[:-1], J))
 
-    return (mu_l * bias_var + bias_mean * sigma_l) / (sigma_l ** 2 + bias_var)
+    return (mu_l * bias_var + bias_mean * sigma_l ** 2) / (sigma_l ** 2 + bias_var)'''
+
+    S_J = np.dot(S[:-1], J)
+
+    def func(b):
+        # bias_mean/bias_var - b/bias_var +
+        return S[1:, n].sum() - np.tanh(S_J + b).sum()
+
+    def func_dev(b):
+        return - 1. / bias_var - (1. / np.cosh(S_J + b) ** 2).sum()
+
+    def func_dev_dev(b):
+        return 2 * (np.tanh(S_J + b) / np.cosh(S_J + b) ** 2).sum()
+
+    init_b = bias_mean
+    b = root(func, init_b).x
+    return b
 
 
-def EP_bias(S, ro, n, v_s, sigma0, bias, bias_mean, bias_var):
+def maximize_gauss_J(activity, n, sigma0, bias_constant, v_s):
+    X = activity[:-1, :]
+    y = activity[1:, n]
+    bias_vec = np.repeat(bias_constant, y.shape)
+
+    per_l = np.dot(X.T, X) / sigma0
+    # sigma_l = np.linalg.inv(per_l)
+    per_m_l = np.dot(X.T, y - bias_vec) / sigma0
+
+    sigma_lp = np.linalg.inv(per_l + 1. / v_s)
+
+    m_lp = np.dot(sigma_lp, per_m_l)
+    return m_lp
+
+
+def calculate_m(S):
+    return np.mean(S, axis=0)
+
+
+def calculate_g(m, J):
+    return np.dot(J, m)
+
+
+def calculate_mean_h(m, J, bias):
+    g = calculate_g(m, J)
+    return g + bias
+
+
+def calculate_C_delta(S):
+    m = calculate_m(S)
+    delta_s = S - m
+
+    N = S.shape[1]
+    T = S.shape[0]
+
+    C = np.empty((N, N))
+    for i in range(N):
+        for j in range(N):
+            C[i, j] = np.dot(delta_s[:, i].T, delta_s[:, j]) / T
+    return C
+
+
+def calculate_delta(J, C):
+    N = J.shape[0]
+    delta = np.array([J[k] * np.dot(C[k, :], J) for k in range(N)]).sum()
+
+    return delta
+
+
+def calculate_a(J, C, m, bias):
+    a = -5.0
+    b = 5.0
+    N = 1000.0
+    delta = calculate_delta(J, C)
+    mean_h = calculate_mean_h(m, J, bias)
+    x = np.linspace(a, b, N)
+    fx = np.exp(-x ** 2 / 2) * (1 - np.tanh(x * np.sqrt(delta) + mean_h) ** 2) / np.sqrt(2 * np.pi)
+
+    integral = np.sum(fx) * (b - a) / N
+    return np.array(integral)
+
+
+def EP_bias(S, ro, n, v_s, sigma0, bias, bias_mean, bias_var, C, m):
     converged = False
     bias_old = bias_mean
     i = 0
     J_old = np.repeat(1, S.shape[1] - bias)
     while not converged:
-        J_new = EP(S[:, :-1], ro, n, v_s, sigma0, False, 0, bias_old)
-        bias_new = maximize_bias(S[:, :-1], v_s, J_new['mu'], bias_mean, n, bias_var)
+        # J_new = EP(S[:, :-1], ro, n, v_s, sigma0, bias_constant=bias_old)
 
+        J_new = maximize_gauss_J(S[:, :-1], n, sigma0, bias_old, v_s)
+        a = calculate_a(J_new, C, m, bias_old)
+        J_new = J_new / a
+        bias_new = maximize_bias(S[:, :-1], v_s, J_new, bias_mean, n, bias_var)
+        #import ipdb; ipdb.set_trace()
         diff = np.abs(bias_new / bias_old)
-        maxdiff = np.max([diff, np.max(J_new['mu'] / J_old)])
-        mindiff = np.min([diff, np.min(J_new['mu'] / J_old)])
-        if maxdiff < 1.00001 and mindiff > 0.9999:
-            converged = True
+        maxdiff = np.max([diff, np.max(J_new / J_old)])
+        mindiff = np.min([diff, np.min(J_new / J_old)])
+        #print(bias_new)
+        #if maxdiff < 1.001 and mindiff > 0.999:
+        converged = True
 
         bias_old = bias_new
-        J_old = J_new['mu']
+        J_old = J_new
         i += 1
-    print(i, bias_old, bias_mean, bias_var)
-    J_new['mu'] = np.hstack([J_new['mu'], bias_new])
-    return J_new
+    print(i, bias_new, maxdiff, mindiff)
+    res = {}
+    res['mu'] = np.hstack([J_new, bias_new])
+    res['gamma'] = np.repeat(1, J_new.shape)
+    res['log_evidence'] = 0
+    return res
 
 
-def EP_single_neuron(activity, ro, ns, v_s, sigma0, bias, bias_mean, bias_var):
+def EP_single_neuron(activity, ro, ns, v_s, sigma0, bias, bias_mean, bias_var, C, m):
     if bias:
-        results = [EP_bias(activity, ro, n, v_s, sigma0, bias, bias_mean, bias_var) for n in ns]
+        results = [EP_bias(activity, ro, n, v_s, sigma0, bias, bias_mean, bias_var, C, m) for n in ns]
     else:
         results = [EP(activity, ro, n, v_s, sigma0) for n in ns]
     return results
@@ -239,7 +324,8 @@ def generate_J_S(likelihood_function, bias, N, T, sparsity, v_s, bias_mean=0):
     return S, J
 
 
-def do_inference(S, J, N, num_processes, sparsity, v_s, sigma0, return_gamma=False, bias=0, bias_mean=0, bias_var=0.1):
+def do_inference(S, J, N, num_processes, sparsity, v_s, sigma0, return_gamma=False, bias=0, bias_mean=0, C=None, m=None,
+                 bias_var=1.0):
     # infere coupling from S
     J_est_EP = np.empty(J.shape)
     log_evidence = 0.0
@@ -249,7 +335,7 @@ def do_inference(S, J, N, num_processes, sparsity, v_s, sigma0, return_gamma=Fal
     indices = range(N)
     inputs = [indices[i:i + N / num_processes] for i in range(0, len(indices), N / num_processes)]
     for input_indices in inputs:
-        args_multi.append((S, sparsity, input_indices, v_s, sigma0, bias, bias_mean, v_s))
+        args_multi.append((S, sparsity, input_indices, v_s, sigma0, bias, bias_mean, bias_var, C, m))
 
     results = do_multiprocess(multi_process_EP, args_multi, num_processes)
 
@@ -387,10 +473,13 @@ def main(num_neurons, time_steps, num_processes, likelihood_function, sparsity, 
                 dir_name = get_dir_name(ppriors, N, T, sparsity, likelihood_function, approx='gaussian',
                                         t_stamp=t_stamp)
                 S, J = generate_J_S(likelihood_function, bias, N, T, sparsity, v_s, bias_mean)
+                C = calculate_C_delta(S[:, :N])
+                m = calculate_m(S[:, :N])
                 J_est_EPs = []
                 log_evidences = []
                 for pprior in ppriors:
-                    results = do_inference(S, J, N, num_processes, pprior, v_s, sigma0, return_gamma, bias, bias_mean)
+                    results = do_inference(S, J, N, num_processes, pprior, v_s, sigma0, return_gamma, bias, bias_mean,
+                                           C, m)
                     J_est_EPs.append(results[0])
                     log_evidences.append(results[1])
                 save_inference_results_to_file(dir_name, S, J, 0, [J_est_EPs], likelihood_function,
